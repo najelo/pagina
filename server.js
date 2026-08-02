@@ -984,16 +984,25 @@ app.post('/api/protect', requireUser, parseRequestBody, (req, res) => {
     return res.status(400).json({ detail: "Contraseña muy corta" });
   }
   const pwdHash = hashPassword(password);
-  const protVal = { hash: pwdHash, plain: password };
-  protectedItemsMap.set(itemPath, protVal);
+  protectedItemsMap.set(itemPath, pwdHash);
   saveData();
-  saveProtectedItemToSupabase(itemPath, protVal);
+  saveProtectedItemToSupabase(itemPath, pwdHash);
   logActivity(req.user.username, "ITEM_PROTECTED", `Protegió con contraseña '${itemPath}'`);
   return res.json({ status: "ok" });
 });
 
 app.post('/api/unprotect', requireUser, parseRequestBody, (req, res) => {
   const itemPath = req.body.item_path;
+  const password = req.body.password || '';
+  const stored = protectedItemsMap.get(itemPath);
+
+  if (stored) {
+    const storedHash = typeof stored === 'object' ? stored.hash : stored;
+    if (!password || !verifyPassword(password, storedHash)) {
+      return res.status(401).json({ detail: "Contraseña incorrecta para desproteger" });
+    }
+  }
+
   protectedItemsMap.delete(itemPath);
   saveData();
   saveProtectedItemToSupabase(itemPath, null);
@@ -1015,13 +1024,10 @@ app.post('/api/verify-item-password', requireUser, parseRequestBody, (req, res) 
 
 app.get('/api/admin/protected-items', requireAdmin, (req, res) => {
   const list = [];
-  for (const [pathKey, val] of protectedItemsMap.entries()) {
-    const hash = typeof val === 'object' ? val.hash : val;
-    const plain = typeof val === 'object' ? (val.plain || '') : '';
+  for (const [pathKey] of protectedItemsMap.entries()) {
     list.push({
       item_path: pathKey,
-      plain_password: plain,
-      password_hash: hash
+      is_protected: true
     });
   }
   res.json(list);
@@ -1037,10 +1043,9 @@ app.post('/api/admin/change-protected-password', requireAdmin, parseRequestBody,
     return res.status(400).json({ detail: "La contraseña debe tener al menos 3 caracteres" });
   }
   const pwdHash = hashPassword(newPassword.trim());
-  const protVal = { hash: pwdHash, plain: newPassword.trim() };
-  protectedItemsMap.set(itemPath, protVal);
+  protectedItemsMap.set(itemPath, pwdHash);
   saveData();
-  saveProtectedItemToSupabase(itemPath, protVal);
+  saveProtectedItemToSupabase(itemPath, pwdHash);
   logActivity(req.user.username, "ITEM_PASSWORD_CHANGED", `Cambió la contraseña de '${itemPath}'`);
   return res.json({ status: "ok" });
 });
