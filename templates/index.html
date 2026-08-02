@@ -184,18 +184,30 @@
             </div>
 
             <!-- Vista de Logs (Oculta por defecto) -->
-            <div id="admin-logs-section" style="display: none; max-height: 380px; overflow-y: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                    <thead>
-                        <tr style="border-bottom: 1px solid var(--border); text-align: left; color: var(--text-secondary);">
-                            <th style="padding: 8px;">Admin</th>
-                            <th style="padding: 8px;">Acción</th>
-                            <th style="padding: 8px;">Afectado</th>
-                            <th style="padding: 8px;">Fecha</th>
-                        </tr>
-                    </thead>
-                    <tbody id="logs-tbody"></tbody>
-                </table>
+            <div id="admin-logs-section" style="display: none; flex-direction: column; gap: 12px;">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div style="width: 200px;">
+                        <select id="log-user-select" class="modal-input" style="width: 100%; box-sizing: border-box;" onchange="filterAdminLogs()">
+                            <option value="">Todos los usuarios</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1;">
+                        <input type="text" id="log-search-input" class="modal-input" placeholder="Buscar por acción o detalle..." style="width: 100%; box-sizing: border-box;" oninput="filterAdminLogs()">
+                    </div>
+                </div>
+                <div style="max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead style="position: sticky; top: 0; background: var(--bg-hover); z-index: 1;">
+                            <tr style="border-bottom: 1px solid var(--border); text-align: left; color: var(--text-secondary);">
+                                <th style="padding: 10px;">Usuario</th>
+                                <th style="padding: 10px;">Acción</th>
+                                <th style="padding: 10px;">Detalles</th>
+                                <th style="padding: 10px;">Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-tbody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
