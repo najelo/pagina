@@ -911,6 +911,33 @@ app.get('/search', requirePermission('can_view'), async (req, res) => {
   }
 });
 
+app.get('/api/storage', requirePermission('can_view'), async (req, res) => {
+  try {
+    async function calcStorage(relPath = '') {
+      let totalBytes = 0;
+      let totalCount = 0;
+      const items = await recursiveListFiles(relPath);
+      for (const item of items) {
+        const itemRelPath = relPath ? `${relPath}/${item.name}` : item.name;
+        if (item.is_dir) {
+          const sub = await calcStorage(itemRelPath);
+          totalBytes += sub.totalBytes;
+          totalCount += sub.totalCount;
+        } else {
+          totalBytes += (item.size || 0);
+          totalCount += 1;
+        }
+      }
+      return { totalBytes, totalCount };
+    }
+
+    const { totalBytes, totalCount } = await calcStorage('');
+    return res.json({ used_bytes: totalBytes, item_count: totalCount });
+  } catch (e) {
+    return res.json({ used_bytes: 0, item_count: 0 });
+  }
+});
+
 app.post('/rename', requirePermission('can_rename'), parseRequestBody, async (req, res) => {
   const oldPath = req.body.old_path || '';
   const newName = req.body.new_name || '';
