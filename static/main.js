@@ -1683,20 +1683,132 @@ let allAdminLogsCache = [];
 function switchAdminTab(tabName) {
     const usersSec = document.getElementById('admin-users-section');
     const logsSec = document.getElementById('admin-logs-section');
+    const protSec = document.getElementById('admin-protected-section');
+
     const btnUsers = document.getElementById('tab-users-btn');
     const btnLogs = document.getElementById('tab-logs-btn');
+    const btnProt = document.getElementById('tab-protected-btn');
 
-    if (tabName === 'users') {
-        if (usersSec) usersSec.style.display = 'block';
-        if (logsSec) logsSec.style.display = 'none';
-        if (btnUsers) btnUsers.className = 'modal-btn primary';
-        if (btnLogs) btnLogs.className = 'modal-btn';
-    } else {
-        if (usersSec) usersSec.style.display = 'none';
-        if (logsSec) logsSec.style.display = 'flex';
-        if (btnUsers) btnUsers.className = 'modal-btn';
-        if (btnLogs) btnLogs.className = 'modal-btn primary';
+    if (usersSec) usersSec.style.display = tabName === 'users' ? 'block' : 'none';
+    if (logsSec) logsSec.style.display = tabName === 'logs' ? 'flex' : 'none';
+    if (protSec) protSec.style.display = tabName === 'protected' ? 'flex' : 'none';
+
+    if (btnUsers) btnUsers.className = tabName === 'users' ? 'modal-btn primary' : 'modal-btn';
+    if (btnLogs) btnLogs.className = tabName === 'logs' ? 'modal-btn primary' : 'modal-btn';
+    if (btnProt) btnProt.className = tabName === 'protected' ? 'modal-btn primary' : 'modal-btn';
+
+    if (tabName === 'logs') {
         loadAdminLogs();
+    } else if (tabName === 'protected') {
+        loadAdminProtected();
+    }
+}
+
+let targetProtectedPathToChange = '';
+
+async function loadAdminProtected() {
+    const tbody = document.getElementById('protected-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--text-secondary);">Cargando elementos protegidos...</td></tr>`;
+
+    try {
+        const res = await fetch('/api/admin/protected-items');
+        if (!res.ok) throw new Error();
+        const items = await res.json();
+
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--text-secondary);">No hay archivos ni carpetas protegidas actualmente.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = items.map((it, idx) => {
+            const passId = `prot-pass-${idx}`;
+            const plainPass = it.plain_password || '(Sin clave legible)';
+            return `
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="padding: 10px; font-weight: 600; color: var(--text-main); word-break: break-all;">
+                        <i class="ri-lock-2-line" style="color: var(--warning); margin-right: 6px;"></i>${escapeHtml(it.item_path)}
+                    </td>
+                    <td style="padding: 10px; white-space: nowrap;">
+                        <span id="${passId}" data-real="${escapeHtml(plainPass)}" style="font-family: monospace; font-weight: bold; letter-spacing: 1px;">••••••••</span>
+                        <button onclick="togglePasswordVisibility('${passId}')" style="background: none; border: none; cursor: pointer; color: var(--text-secondary); margin-left: 6px;" title="Ver/ocultar clave">
+                            <i id="${passId}-icon" class="ri-eye-line"></i>
+                        </button>
+                    </td>
+                    <td style="padding: 10px; text-align: right; white-space: nowrap;">
+                        <button onclick="openChangeProtectedPassModal('${escapeHtml(it.item_path)}')" style="background: var(--primary); color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;" title="Cambiar clave">
+                            <i class="ri-key-2-line"></i> Cambiar
+                        </button>
+                        <button onclick="adminUnprotectItem('${escapeHtml(it.item_path)}')" style="background: var(--danger); color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;" title="Quitar protección">
+                            <i class="ri-lock-unlock-line"></i> Quitar
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--danger);">Error al cargar elementos protegidos.</td></tr>`;
+    }
+}
+
+function openChangeProtectedPassModal(itemPath) {
+    targetProtectedPathToChange = itemPath;
+    const nameEl = document.getElementById('change-pass-item-name');
+    const inputEl = document.getElementById('change-protected-pass-input');
+    if (nameEl) nameEl.textContent = itemPath;
+    if (inputEl) inputEl.value = '';
+    openModal('change-protected-pass-modal');
+    setTimeout(() => { if (inputEl) inputEl.focus(); }, 50);
+}
+
+async function submitAdminChangeProtectedPassword() {
+    if (!targetProtectedPathToChange) return;
+    const inputEl = document.getElementById('change-protected-pass-input');
+    const newPass = inputEl ? inputEl.value.trim() : '';
+
+    if (newPass.length < 3) {
+        showToast("La contraseña debe tener al menos 3 caracteres", "error");
+        return;
+    }
+
+    const form = new FormData();
+    form.append("item_path", targetProtectedPathToChange);
+    form.append("new_password", newPass);
+
+    try {
+        const res = await fetch('/api/admin/change-protected-password', { method: 'POST', body: form });
+        if (res.ok) {
+            closeModal('change-protected-pass-modal');
+            showToast("Contraseña de protección actualizada con éxito", "success");
+            loadAdminProtected();
+            loadFiles(currentSubPath);
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.detail || "Error al actualizar contraseña", "error");
+        }
+    } catch (e) {
+        showToast("Error de conexión", "error");
+    }
+}
+
+async function adminUnprotectItem(itemPath) {
+    const ok = await showConfirm(`¿Quitar la protección de "${itemPath}"?`, { title: "Quitar protección" });
+    if (!ok) return;
+
+    const form = new FormData();
+    form.append("item_path", itemPath);
+
+    try {
+        const res = await fetch('/api/unprotect', { method: 'POST', body: form });
+        if (res.ok) {
+            showToast("Protección eliminada", "success");
+            loadAdminProtected();
+            loadFiles(currentSubPath);
+        } else {
+            showToast("Error al quitar protección", "error");
+        }
+    } catch (e) {
+        showToast("Error de conexión", "error");
     }
 }
 
