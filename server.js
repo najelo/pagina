@@ -102,13 +102,22 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
   }
 }
 
-// Configuración de Bunny.net Storage
+// Configuración de Bunny.net Storage y Pull Zone CDN
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
 const BUNNY_API_KEY = process.env.BUNNY_API_KEY;
 const BUNNY_REGION = process.env.BUNNY_REGION || 'storage.bunnycdn.com';
+const BUNNY_PULL_ZONE_URL = (process.env.BUNNY_PULL_ZONE_URL || process.env.BUNNY_CDN_URL || '').trim().replace(/\/+$/, '');
 
 function isBunnyEnabled() {
   return Boolean(BUNNY_STORAGE_ZONE && BUNNY_API_KEY);
+}
+
+function getBunnyCdnUrl(relPath = '') {
+  if (!BUNNY_PULL_ZONE_URL) return null;
+  let cleanPath = (relPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!cleanPath) return BUNNY_PULL_ZONE_URL;
+  const parts = cleanPath.split('/').map(encodeURIComponent);
+  return `${BUNNY_PULL_ZONE_URL}/${parts.join('/')}`;
 }
 
 function getBunnyUrl(relPath = '') {
@@ -1079,8 +1088,13 @@ app.get('/view', requirePermission('can_view'), async (req, res) => {
   const itemPath = req.query.path || '';
   const fullPath = safePath(itemPath);
 
-  if (fs.existsSync(fullPath)) {
+  if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
     return res.sendFile(fullPath);
+  }
+
+  const cdnUrl = getBunnyCdnUrl(itemPath);
+  if (cdnUrl) {
+    return res.redirect(302, cdnUrl);
   }
 
   if (isBunnyEnabled()) {
@@ -1098,8 +1112,13 @@ app.get('/download', requirePermission('can_view'), async (req, res) => {
   const fullPath = safePath(itemPath);
   const fileName = path.basename(itemPath);
 
-  if (fs.existsSync(fullPath)) {
+  if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
     return res.download(fullPath, fileName);
+  }
+
+  const cdnUrl = getBunnyCdnUrl(itemPath);
+  if (cdnUrl) {
+    return res.redirect(302, `${cdnUrl}?download=true`);
   }
 
   if (isBunnyEnabled()) {
@@ -1168,8 +1187,12 @@ app.get('/s/:token', async (req, res) => {
     return res.status(404).send("Enlace no válido o expirado");
   }
   const fullPath = safePath(share.item_path);
-  if (fs.existsSync(fullPath)) {
+  if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
     return res.sendFile(fullPath);
+  }
+  const cdnUrl = getBunnyCdnUrl(share.item_path);
+  if (cdnUrl) {
+    return res.redirect(302, cdnUrl);
   }
   if (isBunnyEnabled()) {
     const buf = await bunnyDownloadBuffer(share.item_path);
