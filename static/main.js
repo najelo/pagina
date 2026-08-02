@@ -69,6 +69,10 @@ document.addEventListener("DOMContentLoaded", () => {
     currentViewMode = localStorage.getItem('najelo-view-mode') || 'grid';
     const startPath = localStorage.getItem('najelo-last-path') || "";
 
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) searchInput.value = "";
+    setTimeout(() => { if (searchInput) searchInput.value = ""; }, 100);
+
     loadFiles(startPath);
     checkAdminStatus();
     applyViewMode();
@@ -181,27 +185,31 @@ function renderSkeleton() {
 }
 
 function resolvedPath(file) {
-    if (file.path !== undefined) return file.path;
-    return currentSubPath ? `${currentSubPath}/${file.name}` : file.name;
+    if (!file) return "";
+    if (file.path !== undefined && file.path !== null) return String(file.path);
+    const name = file.name || "";
+    return currentSubPath ? `${currentSubPath}/${name}` : name;
 }
 
 function getIconAndType(file) {
     let iconClass = "ri-file-text-line";
     let typeName = "Archivo";
+    if (!file) return { iconClass, typeName };
+    const name = file.name || "";
     if (file.is_dir) {
         iconClass = "ri-folder-fill";
         typeName = "Carpeta";
-    } else if (file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+    } else if (name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
         iconClass = "ri-image-line"; typeName = "Imagen";
-    } else if (file.name.match(/\.(mp4|webm|ogg)$/i)) {
+    } else if (name.match(/\.(mp4|webm|ogg)$/i)) {
         iconClass = "ri-video-line"; typeName = "Video";
-    } else if (file.name.match(/\.(pdf)$/i)) {
+    } else if (name.match(/\.(pdf)$/i)) {
         iconClass = "ri-file-pdf-line"; typeName = "Documento PDF";
-    } else if (file.name.match(/\.(csv)$/i)) {
+    } else if (name.match(/\.(csv)$/i)) {
         iconClass = "ri-file-chart-line"; typeName = "Hoja CSV";
-    } else if (file.name.match(/\.(zip|rar|7z|tar|gz)$/i)) {
+    } else if (name.match(/\.(zip|rar|7z|tar|gz)$/i)) {
         iconClass = "ri-file-zip-line"; typeName = "Comprimido";
-    } else if (file.name.match(/\.(py|js|html|css|json|md|sql|java|c|cpp|ts|jsx)$/i)) {
+    } else if (name.match(/\.(py|js|html|css|json|md|sql|java|c|cpp|ts|jsx)$/i)) {
         iconClass = "ri-code-s-slash-line"; typeName = "Código";
     }
     return { iconClass, typeName };
@@ -268,12 +276,17 @@ function renderFiles(files) {
     const listTbody = document.getElementById('list-tbody');
     if (!gridContainer || !listTbody) return;
 
+    if (!Array.isArray(files)) {
+        files = [];
+    }
+    files = files.filter(f => f && typeof f === 'object');
+
     currentDisplayedItems = files.map(f => ({ ...f, path: resolvedPath(f) }));
 
     gridContainer.innerHTML = "";
     listTbody.innerHTML = "";
 
-    if (files.length === 0) {
+    if (currentDisplayedItems.length === 0) {
         const msg = isSearchMode ? "No se encontraron resultados" : "Esta carpeta está vacía";
         gridContainer.innerHTML = `<div class="empty-state"><i class="${isSearchMode ? 'ri-search-line' : 'ri-folder-open-line'}"></i><p>${msg}</p></div>`;
         listTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 30px;">${msg}</td></tr>`;
@@ -282,7 +295,9 @@ function renderFiles(files) {
 
     currentDisplayedItems.forEach((file, index) => {
         const { iconClass, typeName } = getIconAndType(file);
-        const fullPath = file.path;
+        const fullPath = file.path || file.name || "";
+        const safeEscapedPath = fullPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const fileName = file.name || fullPath.split('/').pop() || 'Sin nombre';
         const lockBadge = file.is_protected ? `<i class="ri-lock-fill" style="color: var(--primary);" title="Protegido con clave"></i>` : '';
         const subtitle = isSearchMode ? `<div style="font-size:11px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:115px;">${fullPath}</div>` : '';
 
@@ -294,14 +309,14 @@ function renderFiles(files) {
 
         let thumbContent = `<i class="${iconClass}"></i>`;
         let deferredThumb = null;
-        if (!file.is_dir && !file.is_protected) {
-            if (file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        if (!file.is_dir && !file.is_protected && fileName) {
+            if (fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
                 thumbContent = `<img src="${fileUrl}" loading="lazy">`;
-            } else if (file.name.match(/\.(mp4|webm|ogg)$/i)) {
+            } else if (fileName.match(/\.(mp4|webm|ogg)$/i)) {
                 thumbContent = `<video muted preload="metadata" src="${fileUrl}#t=0.5"></video>`;
-            } else if (file.name.match(/\.(pdf)$/i)) {
+            } else if (fileName.match(/\.(pdf)$/i)) {
                 deferredThumb = { type: 'pdf', url: fileUrl };
-            } else if (file.name.match(/\.(txt|md|py|js|html|css|json|sql|java|c|cpp|ts|jsx|csv|log|yml|yaml)$/i)) {
+            } else if (fileName.match(/\.(txt|md|py|js|html|css|json|sql|java|c|cpp|ts|jsx|csv|log|yml|yaml)$/i)) {
                 deferredThumb = { type: 'text', url: fileUrl };
             }
         }
@@ -311,12 +326,12 @@ function renderFiles(files) {
             <div class="card-thumbnail"${deferredThumb ? ` data-thumb-type="${deferredThumb.type}" data-thumb-url="${deferredThumb.url}"` : ''}>${thumbContent}</div>
             <div class="card-footer">
                 <div style="overflow:hidden;">
-                    <span class="card-name" title="${file.name}">${file.name}</span>
+                    <span class="card-name" title="${fileName}">${fileName}</span>
                     ${subtitle}
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px;">
                     ${lockBadge}
-                    <button class="card-menu-btn" onclick="openCardMenu(event, '${fullPath.replace(/'/g, "\\'")}')"><i class="ri-more-2-fill"></i></button>
+                    <button class="card-menu-btn" onclick="openCardMenu(event, '${safeEscapedPath}')"><i class="ri-more-2-fill"></i></button>
                 </div>
             </div>
         `;
@@ -354,15 +369,39 @@ function renderFiles(files) {
             <td class="checkbox-col"><input type="checkbox" ${selectedPaths.has(fullPath) ? 'checked' : ''}></td>
             <td style="display: flex; align-items: center; gap: 10px;">
                 <i class="${iconClass}" style="font-size: 18px; color: ${file.is_dir ? '#fbbc05' : 'var(--text-secondary)'};"></i>
-                <span style="font-weight: 500;">${file.name}</span>
+                <span style="font-weight: 500;">${fileName}</span>
                 ${isSearchMode ? `<span style="font-size:11px; color:var(--text-secondary);">${fullPath}</span>` : ''}
                 ${lockBadge}
             </td>
             <td>${typeName}</td>
-            <td class="col-meta">${file.is_dir ? '—' : formatBytes(file.size)}</td>
-            <td class="col-meta">${formatDate(file.modified)}</td>
-            <td><button onclick="openCardMenu(event, '${fullPath.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; color:var(--text-secondary); font-size:16px;"><i class="ri-more-fill"></i></button></td>
+            <td class="col-meta">${file.is_dir ? '—' : formatBytes(file.size || 0)}</td>
+            <td class="col-meta">${formatDate(file.modified || 0)}</td>
+            <td><button onclick="openCardMenu(event, '${safeEscapedPath}')" style="background:none; border:none; cursor:pointer; color:var(--text-secondary); font-size:16px;"><i class="ri-more-fill"></i></button></td>
         `;
+        tr.querySelector('input[type=checkbox]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleItemSelection(fullPath, index, false);
+        });
+        tr.addEventListener('click', (e) => {
+            if (e.target.closest('button') || e.target.closest('input')) return;
+            if (selectionModeActive || selectedPaths.size > 0 || e.ctrlKey || e.metaKey || e.shiftKey) {
+                handleItemClick(e, fullPath, index);
+            } else {
+                handleOpenItem(fullPath, file.is_dir);
+            }
+        });
+        tr.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            selectItemForMenu(file, fullPath);
+            showContextMenu(e.clientX, e.clientY);
+        });
+        attachLongPress(tr, () => toggleItemSelection(fullPath, index, false));
+        attachDragHandlers(tr, fullPath, file.is_dir);
+        listTbody.appendChild(tr);
+    });
+
+    observeDeferredThumbnails();
+}
         tr.querySelector('input[type=checkbox]').addEventListener('click', (e) => {
             e.stopPropagation();
             toggleItemSelection(fullPath, index, false);
