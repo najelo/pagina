@@ -876,19 +876,9 @@ async function menuAction(action) {
         openModal('protect-modal');
         setTimeout(() => document.getElementById('protect-password-input').focus(), 50);
     } else if (action === 'unprotect') {
-        const form = new FormData();
-        form.append("item_path", currentSelected);
-        try {
-            const res = await fetch('/api/unprotect', { method: 'POST', body: form });
-            if (res.ok) {
-                showToast("Se ha quitado la protección", "success");
-                loadFiles(currentSubPath);
-            } else {
-                showToast("Error al quitar protección", "error");
-            }
-        } catch (e) {
-            showToast("Error de conexión", "error");
-        }
+        document.getElementById('unprotect-password-input').value = "";
+        openModal('unprotect-modal');
+        setTimeout(() => document.getElementById('unprotect-password-input').focus(), 50);
     } else if (action === 'rename') {
         document.getElementById('rename-name-input').value = fileName;
         openModal('rename-modal');
@@ -934,6 +924,30 @@ async function submitProtect() {
         } else {
             const err = await res.json().catch(() => ({}));
             showToast(err.detail || "Error al proteger el elemento", "error");
+        }
+    } catch (e) {
+        showToast("Error de conexión", "error");
+    }
+}
+
+async function submitUnprotect() {
+    const password = document.getElementById('unprotect-password-input').value;
+    if (!password) {
+        showToast("Por favor ingresa la contraseña actual", "error");
+        return;
+    }
+    const form = new FormData();
+    form.append("item_path", selectedItem);
+    form.append("password", password);
+    try {
+        const res = await fetch('/api/unprotect', { method: 'POST', body: form });
+        if (res.ok) {
+            closeModal('unprotect-modal');
+            showToast("Se ha quitado la protección", "success");
+            loadFiles(currentSubPath);
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.detail || "Contraseña incorrecta", "error");
         }
     } catch (e) {
         showToast("Error de conexión", "error");
@@ -1721,23 +1735,18 @@ async function loadAdminProtected() {
             return;
         }
 
-        tbody.innerHTML = items.map((it, idx) => {
-            const passId = `prot-pass-${idx}`;
-            const plainPass = it.plain_password || '(Sin clave legible)';
+        tbody.innerHTML = items.map((it) => {
             return `
                 <tr style="border-bottom: 1px solid var(--border);">
                     <td style="padding: 10px; font-weight: 600; color: var(--text-main); word-break: break-all;">
                         <i class="ri-lock-2-line" style="color: var(--warning); margin-right: 6px;"></i>${escapeHtml(it.item_path)}
                     </td>
-                    <td style="padding: 10px; white-space: nowrap;">
-                        <span id="${passId}" data-real="${escapeHtml(plainPass)}" style="font-family: monospace; font-weight: bold; letter-spacing: 1px;">••••••••</span>
-                        <button onclick="togglePasswordVisibility('${passId}')" style="background: none; border: none; cursor: pointer; color: var(--text-secondary); margin-left: 6px;" title="Ver/ocultar clave">
-                            <i id="${passId}-icon" class="ri-eye-line"></i>
-                        </button>
+                    <td style="padding: 10px; color: var(--success); font-weight: 500; font-size: 12px; white-space: nowrap;">
+                        <i class="ri-shield-keyhole-line"></i> Protegido
                     </td>
                     <td style="padding: 10px; text-align: right; white-space: nowrap;">
                         <button onclick="openChangeProtectedPassModal('${escapeHtml(it.item_path)}')" style="background: var(--primary); color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;" title="Cambiar clave">
-                            <i class="ri-key-2-line"></i> Cambiar
+                            <i class="ri-key-2-line"></i> Cambiar clave
                         </button>
                         <button onclick="adminUnprotectItem('${escapeHtml(it.item_path)}')" style="background: var(--danger); color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;" title="Quitar protección">
                             <i class="ri-lock-unlock-line"></i> Quitar
