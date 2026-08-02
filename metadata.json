@@ -1,0 +1,6 @@
+{
+  "name": "Najelo Cloud",
+  "description": "Nube privada para almacenamiento, gestión y compartición de archivos",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

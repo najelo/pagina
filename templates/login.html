@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso - Najelo Cloud</title>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <script>
+        (function () {
+            const saved = localStorage.getItem('najelo-theme') || 'light';
+            if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        })();
+    </script>
+    <style>
+        :root {
+            --primary: #1a73e8;
+            --primary-hover: #1765cc;
+            --primary-bg: #e8f0fe;
+            --bg-hover: #f1f3f4;
+            --border: #e3e5e8;
+            --text-main: #202124;
+            --text-secondary: #5f6368;
+            --bg-main: #f4f6f9;
+            --card-bg: #ffffff;
+            --danger: #d93025;
+            --success: #1e8e3e;
+            --shadow-md: 0 10px 30px rgba(0,0,0,0.10);
+            color-scheme: light;
+        }
+        [data-theme="dark"] {
+            --primary: #8ab4f8;
+            --primary-hover: #aecbfa;
+            --primary-bg: #28324a;
+            --bg-hover: #303134;
+            --border: #3c4043;
+            --text-main: #e8eaed;
+            --text-secondary: #9aa0a6;
+            --bg-main: #131314;
+            --card-bg: #1e1f22;
+            --danger: #f28b82;
+            --success: #81c995;
+            --shadow-md: 0 10px 30px rgba(0,0,0,0.45);
+            color-scheme: dark;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", "Google Sans", Roboto, Arial, sans-serif;
+            background-color: var(--bg-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: var(--text-main);
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+        #theme-toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            box-shadow: var(--shadow-md);
+            transition: background 0.2s, transform 0.15s;
+        }
+        #theme-toggle-btn:hover { background: var(--bg-hover); transform: scale(1.05); }
+        #theme-toggle-btn i { transition: transform 0.4s ease; }
+        #theme-toggle-btn:hover i { transform: rotate(20deg); }
+
+        .login-card {
+            background: var(--card-bg);
+            padding: 36px 32px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--border);
+            width: 100%;
+            max-width: 380px;
+            animation: fadeUp 0.35s ease;
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+        .brand i {
+            font-size: 26px;
+            background: linear-gradient(135deg, var(--primary), #8ab4f8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        h2 {
+            margin-top: 0;
+            color: var(--text-main);
+            text-align: center;
+            margin-bottom: 24px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .input-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 6px; color: var(--text-secondary); font-size: 13px; font-weight: 500; }
+        input {
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 14px;
+            background: var(--bg-main);
+            color: var(--text-main);
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-bg); }
+        .password-container { position: relative; }
+        .password-container input { padding-right: 40px; }
+        .toggle-password {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 18px;
+        }
+        button.btn-primary {
+            width: 100%;
+            padding: 11px;
+            background-color: var(--primary);
+            border: none;
+            color: #fff;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 6px;
+            transition: background 0.2s, transform 0.1s;
+        }
+        [data-theme="dark"] button.btn-primary { color: #131314; }
+        button.btn-primary:hover { background-color: var(--primary-hover); }
+        button.btn-primary:active { transform: scale(0.98); }
+        .form-switch { text-align: center; margin-top: 18px; font-size: 13px; color: var(--text-secondary); }
+        .form-switch a { color: var(--primary); text-decoration: none; cursor: pointer; font-weight: 500; }
+        .form-switch a:hover { text-decoration: underline; }
+        .hidden { display: none; }
+        #error-msg, #register-msg { font-size: 13px; text-align: center; margin-top: 10px; min-height: 16px; }
+        #error-msg { color: var(--danger); }
+        #register-msg { color: var(--success); }
+    </style>
+</head>
+<body>
+
+    <button id="theme-toggle-btn" onclick="toggleTheme()" title="Cambiar tema">
+        <i class="ri-moon-line" id="theme-toggle-icon"></i>
+    </button>
+
+    <div class="login-card">
+        <div class="brand"><i class="ri-cloud-fill"></i> Najelo Cloud</div>
+
+        <!-- FORMULARIO DE INICIO DE SESIÓN -->
+        <div id="login-section">
+            <h2>Iniciar Sesión</h2>
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="login-username">Usuario</label>
+                    <input type="text" id="login-username" name="username" required autocomplete="username">
+                </div>
+
+                <div class="input-group">
+                    <label for="login-password">Contraseña</label>
+                    <div class="password-container">
+                        <input type="password" id="login-password" name="password" required autocomplete="current-password">
+                        <i class="ri-eye-off-line toggle-password" id="toggle-login-eye" onclick="togglePassword('login-password', 'toggle-login-eye')"></i>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary">Entrar</button>
+                <div id="error-msg"></div>
+                <div style="margin-top: 15px; padding: 10px; background: var(--primary-bg); border-radius: 8px; font-size: 12px; color: var(--text-secondary); text-align: center;">
+                    <strong>Acceso Administrador:</strong><br>
+                    Usuario: <code style="font-weight: bold;">admin</code> | Clave: <code style="font-weight: bold;">cualquiera</code> (ej. admin o 1234)
+                </div>
+            </form>
+            <div class="form-switch">
+                ¿No tienes cuenta? <a onclick="switchForm('register')">Regístrate aquí</a>
+            </div>
+        </div>
+
+        <!-- FORMULARIO DE REGISTRO -->
+        <div id="register-section" class="hidden">
+            <h2>Crear Cuenta</h2>
+            <form id="register-form">
+                <div class="input-group">
+                    <label for="reg-username">Usuario</label>
+                    <input type="text" id="reg-username" name="username" required autocomplete="username">
+                </div>
+
+                <div class="input-group">
+                    <label for="reg-password">Contraseña</label>
+                    <div class="password-container">
+                        <input type="password" id="reg-password" name="password" required autocomplete="new-password">
+                        <i class="ri-eye-off-line toggle-password" id="toggle-reg-eye" onclick="togglePassword('reg-password', 'toggle-reg-eye')"></i>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary">Registrarse</button>
+                <div id="register-msg"></div>
+            </form>
+            <div class="form-switch">
+                ¿Ya tienes cuenta? <a onclick="switchForm('login')">Inicia sesión</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- TEMA CLARO / OSCURO ---
+        function applyThemeIcon() {
+            const icon = document.getElementById('theme-toggle-icon');
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            if (icon) icon.className = isDark ? 'ri-sun-line' : 'ri-moon-line';
+        }
+        function toggleTheme() {
+            const root = document.documentElement;
+            const isDark = root.getAttribute('data-theme') === 'dark';
+            if (isDark) {
+                root.removeAttribute('data-theme');
+                localStorage.setItem('najelo-theme', 'light');
+            } else {
+                root.setAttribute('data-theme', 'dark');
+                localStorage.setItem('najelo-theme', 'dark');
+            }
+            applyThemeIcon();
+        }
+        applyThemeIcon();
+
+        function togglePassword(inputId, iconId) {
+            const passwordInput = document.getElementById(inputId);
+            const eyeIcon = document.getElementById(iconId);
+
+            if (passwordInput.type === "password") {
+                passwordInput.type = "text";
+                eyeIcon.classList.remove("ri-eye-off-line");
+                eyeIcon.classList.add("ri-eye-line");
+            } else {
+                passwordInput.type = "password";
+                eyeIcon.classList.remove("ri-eye-line");
+                eyeIcon.classList.add("ri-eye-off-line");
+            }
+        }
+
+        function switchForm(formType) {
+            const loginSec = document.getElementById("login-section");
+            const regSec = document.getElementById("register-section");
+            if (formType === 'register') {
+                loginSec.classList.add("hidden");
+                regSec.classList.remove("hidden");
+            } else {
+                regSec.classList.add("hidden");
+                loginSec.classList.remove("hidden");
+            }
+        }
+
+        // Manejar Login
+        document.getElementById("login-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const username = document.getElementById("login-username").value.trim();
+            const password = document.getElementById("login-password").value;
+            const errorMsg = document.getElementById("error-msg");
+            errorMsg.innerText = "";
+
+            try {
+                const response = await fetch("/api/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === "ok") {
+                    if (data.user && data.user.id) {
+                        localStorage.setItem('najelo_user_id', data.user.id);
+                        localStorage.setItem('najelo_user', JSON.stringify(data.user));
+                        document.cookie = "najelo_uid=" + data.user.id + "; path=/; max-age=604800; SameSite=None; Secure";
+                    }
+                    window.location.href = "/?auth_uid=" + (data.user ? data.user.id : "");
+                } else {
+                    errorMsg.innerText = data.detail || "Error al iniciar sesión";
+                }
+            } catch (err) {
+                errorMsg.innerText = "Error de conexión con el servidor.";
+            }
+        });
+
+        // Manejar Registro
+        document.getElementById("register-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const username = document.getElementById("reg-username").value.trim();
+            const password = document.getElementById("reg-password").value;
+            const regMsg = document.getElementById("register-msg");
+            regMsg.innerText = "";
+
+            try {
+                const response = await fetch("/api/register", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    regMsg.style.color = "var(--success)";
+                    regMsg.innerText = data.message || "Cuenta creada con éxito.";
+                    setTimeout(() => {
+                        document.getElementById("login-username").value = username;
+                        document.getElementById("login-password").value = password;
+                        switchForm('login');
+                        document.getElementById("login-form").dispatchEvent(new Event('submit'));
+                    }, 800);
+                } else {
+                    regMsg.style.color = "var(--danger)";
+                    regMsg.innerText = data.detail || "Error en el registro";
+                }
+            } catch (err) {
+                regMsg.style.color = "var(--danger)";
+                regMsg.innerText = "Error de conexión con el servidor.";
+            }
+        });
+    </script>
+</body>
+</html>

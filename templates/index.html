@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Najelo Cloud</title>
+    <!-- RemixIcons para los iconos -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <!-- highlight.js para vista previa de código -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- pdf.js para miniaturas de la primera página de PDFs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Enlace al archivo CSS externo -->
+    <link rel="stylesheet" href="/static/style.css?v=5">
+    <script>
+        (function () {
+            const saved = localStorage.getItem('najelo-theme') || 'light';
+            if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        })();
+    </script>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside>
+        <div class="logo-area">
+            <i class="ri-cloud-fill"></i>
+            <span>Najelo Cloud</span>
+        </div>
+
+        <div class="new-dropdown-container">
+            <button class="btn-new" onclick="openNewMenu(event)">
+                <i class="ri-add-line"></i> Nuevo
+            </button>
+            <div id="new-dropdown" class="dropdown-menu">
+                <button onclick="openFolderModal()"><i class="ri-folder-add-line"></i> Nueva carpeta</button>
+                <button onclick="triggerUpload()"><i class="ri-upload-cloud-line"></i> Subir archivos</button>
+                <button onclick="triggerFolderUpload()"><i class="ri-folder-upload-line"></i> Subir carpeta</button>
+            </div>
+        </div>
+
+        <div class="side-nav">
+            <button class="side-nav-item active" id="nav-drive" onclick="goToDrive()"><i class="ri-home-4-line"></i> Mi Unidad</button>
+            <button class="side-nav-item" id="nav-trash" onclick="openTrashModal()"><i class="ri-delete-bin-6-line"></i> Papelera</button>
+        </div>
+
+        <input type="file" id="hidden-file-input" style="display: none;" multiple onchange="handleFileInput(this)">
+        <input type="file" id="hidden-folder-input" style="display: none;" webkitdirectory directory multiple onchange="handleFileInput(this)">
+
+        <div class="storage-box" id="storage-box">
+            <div style="display:flex; justify-content:space-between;"><span>Almacenamiento</span><span id="storage-text">--</span></div>
+            <div class="storage-bar"><div class="storage-bar-fill" id="storage-bar-fill" style="width:0%"></div></div>
+        </div>
+    </aside>
+
+    <!-- Main Section -->
+    <main>
+        <header>
+            <div style="display:flex; align-items:center; gap: 10px;">
+                <button id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Menú"><i class="ri-menu-line"></i></button>
+                <div class="search-bar">
+                    <i class="ri-search-line" style="color: var(--text-secondary);"></i>
+                    <input type="text" id="search-input" placeholder="Buscar en toda la nube..." oninput="filterFiles()">
+                </div>
+            </div>
+            <div class="user-actions">
+                <button id="theme-toggle-btn" onclick="toggleTheme()" title="Cambiar tema">
+                    <i class="ri-moon-line" id="theme-toggle-icon"></i>
+                </button>
+                <button id="view-toggle-btn" onclick="toggleViewMode()" title="Cambiar vista">
+                    <i class="ri-list-check" id="view-toggle-icon"></i>
+                </button>
+                <button id="admin-panel-btn" style="display: none;" onclick="openAdminModal()"><i class="ri-shield-user-line"></i> Panel Admin</button>
+                <button onclick="logout()"><i class="ri-logout-box-r-line"></i> Salir</button>
+            </div>
+        </header>
+
+        <div class="content-body">
+            <div class="toolbar-row">
+                <div id="path-bar" class="path-bar"><!-- Se llena dinámicamente --></div>
+                <div class="toolbar-actions">
+                    <button id="selection-mode-btn" class="selection-mode-btn" onclick="toggleSelectionMode()" title="Seleccionar varios elementos">
+                        <i class="ri-checkbox-multiple-line"></i><span class="btn-label"> Seleccionar</span>
+                    </button>
+                    <div class="sort-control">
+                        <select id="sort-select" onchange="onSortChange()">
+                            <option value="name">Nombre</option>
+                            <option value="size">Tamaño</option>
+                            <option value="modified">Fecha</option>
+                            <option value="type">Tipo</option>
+                        </select>
+                        <button class="sort-dir-btn" id="sort-dir-btn" onclick="toggleSortDir()" title="Invertir orden"><i class="ri-sort-asc" id="sort-dir-icon"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bulk-bar" id="bulk-bar">
+                <span class="bulk-bar-count" id="bulk-bar-count">0 seleccionados</span>
+                <div class="bulk-bar-actions">
+                    <button onclick="bulkDownload()"><i class="ri-download-line"></i> Descargar</button>
+                    <button onclick="bulkMove()"><i class="ri-folder-transfer-line"></i> Mover</button>
+                    <button onclick="bulkCopy()"><i class="ri-file-copy-line"></i> Copiar</button>
+                    <button class="danger" onclick="bulkDelete()"><i class="ri-delete-bin-line"></i> Eliminar</button>
+                    <button onclick="clearSelection()"><i class="ri-close-line"></i> Cancelar</button>
+                </div>
+            </div>
+
+            <!-- Contenedor Grid -->
+            <div id="file-container" class="file-grid"></div>
+
+            <!-- Contenedor Lista -->
+            <table id="list-file-container" class="file-list">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col"><input type="checkbox" id="select-all-checkbox" onclick="toggleSelectAll(this)"></th>
+                        <th onclick="setSort('name')">Nombre</th>
+                        <th onclick="setSort('type')">Tipo</th>
+                        <th onclick="setSort('size')">Tamaño</th>
+                        <th onclick="setSort('modified')">Modificado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="list-tbody"></tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- Fondo para cerrar el menú/hoja al tocar afuera -->
+    <div id="context-menu-backdrop" class="context-menu-backdrop" onclick="hideAllMenus()"></div>
+
+    <!-- Menú Contextual -->
+    <div id="context-menu" class="context-menu">
+        <button id="ctx-view" onclick="menuAction('view')"><i class="ri-eye-line"></i> Ver / Previsualizar</button>
+        <button id="ctx-download" onclick="menuAction('download')"><i class="ri-download-line"></i> Descargar</button>
+        <button id="ctx-share" onclick="menuAction('share')"><i class="ri-share-line"></i> Compartir enlace</button>
+        <button id="ctx-protect" onclick="menuAction('protect')"><i class="ri-lock-line"></i> Proteger con clave</button>
+        <button id="ctx-unprotect" onclick="menuAction('unprotect')"><i class="ri-lock-unlock-line"></i> Quitar protección</button>
+        <button id="ctx-rename" onclick="menuAction('rename')"><i class="ri-pencil-line"></i> Renombrar</button>
+        <button id="ctx-move" onclick="menuAction('move')"><i class="ri-folder-transfer-line"></i> Mover</button>
+        <button id="ctx-copy" onclick="menuAction('copy')"><i class="ri-file-copy-line"></i> Copiar</button>
+        <button id="ctx-delete" onclick="menuAction('delete')"><i class="ri-delete-bin-line"></i> Eliminar</button>
+    </div>
+
+    <!-- Modal Visualizador -->
+    <div id="viewer-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 800px; height: 80vh; display: flex; flex-direction: column;">
+            <div class="modal-title-row">
+                <h3 id="viewer-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></h3>
+                <button class="modal-close-btn" onclick="closeModal('viewer-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <div id="viewer-body" style="flex:1; display:flex; align-items:center; justify-content:center; overflow:auto;"></div>
+        </div>
+    </div>
+
+    <!-- Modal Panel de Administración Actualizado con Pestañas -->
+    <div id="admin-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 740px;">
+            <div class="modal-title-row">
+                <h3>Panel de Administración</h3>
+                <button class="modal-close-btn" onclick="closeModal('admin-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            
+            <!-- Pestañas de navegación interna -->
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                <button class="modal-btn primary" id="tab-users-btn" onclick="switchAdminTab('users')">Usuarios</button>
+                <button class="modal-btn" id="tab-logs-btn" onclick="switchAdminTab('logs')">Registro de Actividad</button>
+            </div>
+
+            <!-- Vista de Usuarios -->
+            <div id="admin-users-section" style="max-height: 380px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border); text-align: left;">
+                            <th style="padding: 10px;">Usuario</th>
+                            <th style="padding: 10px;">Contraseña</th>
+                            <th style="padding: 10px;">Permisos</th>
+                            <th style="padding: 10px;">Estado</th>
+                            <th style="padding: 10px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-tbody"></tbody>
+                </table>
+            </div>
+
+            <!-- Vista de Logs (Oculta por defecto) -->
+            <div id="admin-logs-section" style="display: none; max-height: 380px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border); text-align: left; color: var(--text-secondary);">
+                            <th style="padding: 8px;">Admin</th>
+                            <th style="padding: 8px;">Acción</th>
+                            <th style="padding: 8px;">Afectado</th>
+                            <th style="padding: 8px;">Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Usuario -->
+    <div id="edit-user-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 480px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-user-settings-line"></i> Editar Usuario y Permisos</h3>
+                <button class="modal-close-btn" onclick="closeModal('edit-user-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <input type="hidden" id="edit-user-old-username">
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 5px;">Nombre de usuario:</label>
+                <input type="text" id="edit-user-username" class="modal-input" placeholder="Nombre de usuario" style="width: 100%; box-sizing: border-box;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 5px;">Nueva contraseña (dejar en blanco para conservar):</label>
+                <div style="position: relative;">
+                    <input type="password" id="edit-user-password" class="modal-input" placeholder="Nueva contraseña" style="width: 100%; box-sizing: border-box; padding-right: 35px;">
+                    <button type="button" onclick="toggleInputPassword('edit-user-password', 'edit-user-pwd-icon')" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer;">
+                        <i class="ri-eye-line" id="edit-user-pwd-icon"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Permisos de usuario -->
+            <div style="margin-bottom: 20px; background: var(--bg-hover); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                    <label style="font-size: 13px; font-weight: 600; color: var(--text-main); display:flex; align-items:center; gap:6px;">
+                        <i class="ri-shield-keyhole-line" style="color:var(--primary);"></i> Permisos de acceso
+                    </label>
+                    <span id="perm-admin-badge" style="display: none; font-size: 11px; background: rgba(66,133,244,0.15); color: var(--primary); font-weight: 600; padding: 2px 8px; border-radius: 12px;">Acceso Total (Admin)</span>
+                </div>
+                
+                <div id="perm-checkboxes-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="perm-can-view" checked>
+                        <span><i class="ri-eye-line" style="color:var(--text-secondary);"></i> Ver y descargar</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="perm-can-upload" checked>
+                        <span><i class="ri-upload-cloud-line" style="color:var(--text-secondary);"></i> Subir archivos</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="perm-can-create-folder" checked>
+                        <span><i class="ri-folder-add-line" style="color:var(--text-secondary);"></i> Crear carpetas</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="perm-can-rename" checked>
+                        <span><i class="ri-edit-2-line" style="color:var(--text-secondary);"></i> Renombrar</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="perm-can-move-copy" checked>
+                        <span><i class="ri-folder-transfer-line" style="color:var(--text-secondary);"></i> Mover y copiar</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="perm-can-delete" checked>
+                        <span><i class="ri-delete-bin-line" style="color:var(--text-secondary);"></i> Eliminar</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="modal-actions" style="justify-content: flex-end; gap: 10px;">
+                <button class="modal-btn" onclick="closeModal('edit-user-modal')">Cancelar</button>
+                <button class="modal-btn primary" onclick="submitEditUser()"><i class="ri-save-line"></i> Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Papelera -->
+    <div id="trash-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 640px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-delete-bin-6-line"></i> Papelera</h3>
+                <button class="modal-close-btn" onclick="closeModal('trash-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-bottom: 10px;">
+                <button class="modal-btn danger" onclick="emptyTrash()"><i class="ri-delete-bin-line"></i> Vaciar papelera</button>
+            </div>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border); text-align: left;">
+                            <th style="padding: 10px; font-size: 12px; color: var(--text-secondary);">Elemento</th>
+                            <th style="padding: 10px; font-size: 12px; color: var(--text-secondary);">Eliminado</th>
+                            <th style="padding: 10px; font-size: 12px; color: var(--text-secondary);">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trash-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nueva carpeta -->
+    <div id="folder-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 380px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-folder-add-line"></i> Nueva carpeta</h3>
+                <button class="modal-close-btn" onclick="closeModal('folder-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <input type="text" id="folder-name-input" class="modal-input" placeholder="Nombre de la carpeta" maxlength="100">
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="closeModal('folder-modal')">Cancelar</button>
+                <button class="modal-btn primary" onclick="submitNewFolder()">Crear</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Renombrar -->
+    <div id="rename-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 380px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-pencil-line"></i> Renombrar</h3>
+                <button class="modal-close-btn" onclick="closeModal('rename-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <input type="text" id="rename-name-input" class="modal-input" maxlength="150">
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="closeModal('rename-modal')">Cancelar</button>
+                <button class="modal-btn primary" onclick="submitRename()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Proteger con contraseña -->
+    <div id="protect-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 380px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-lock-line"></i> Proteger con clave</h3>
+                <button class="modal-close-btn" onclick="closeModal('protect-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <input type="password" id="protect-password-input" class="modal-input" placeholder="Contraseña (mín. 3 caracteres)">
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="closeModal('protect-modal')">Cancelar</button>
+                <button class="modal-btn primary" onclick="submitProtect()">Proteger</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Compartir -->
+    <div id="share-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 420px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-share-line"></i> Compartir enlace</h3>
+                <button class="modal-close-btn" onclick="closeModal('share-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <p class="modal-text">Cualquiera con este enlace podrá descargar el elemento, sin necesidad de iniciar sesión.</p>
+            <div class="share-link-row">
+                <input type="text" id="share-link-input" class="modal-input" style="margin-bottom:0;" readonly>
+                <button class="modal-btn primary" onclick="copyShareLink()">Copiar</button>
+            </div>
+            <div class="modal-actions" style="justify-content: flex-start;">
+                <button class="modal-btn" onclick="closeModal('share-modal')">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Mover / Copiar Elemento -->
+    <div id="move-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 440px;">
+            <div class="modal-title-row">
+                <h3 id="move-modal-title"><i class="ri-folder-transfer-line"></i> Mover elemento</h3>
+                <button class="modal-close-btn" onclick="closeModal('move-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <p class="modal-text" id="move-modal-subtitle" style="margin-bottom: 10px; font-size: 13px; color: var(--text-secondary);"></p>
+            
+            <div id="move-modal-path" style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 8px 12px; background: var(--bg-hover); border-radius: 8px; margin-bottom: 12px; overflow-x: auto; white-space: nowrap;"></div>
+            
+            <div id="move-modal-folder-list" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px; margin-bottom: 16px;"></div>
+
+            <div class="modal-actions" style="justify-content: space-between; align-items: center;">
+                <button class="modal-btn" onclick="closeModal('move-modal')">Cancelar</button>
+                <button class="modal-btn primary" id="move-modal-confirm-btn" onclick="submitMoveModal()"><i class="ri-check-line"></i> Mover aquí</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de confirmación genérico -->
+    <div id="confirm-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 380px;">
+            <div class="modal-title-row">
+                <h3 id="confirm-modal-title"><i class="ri-error-warning-line"></i> Confirmar</h3>
+                <button class="modal-close-btn" onclick="resolveConfirm(false)"><i class="ri-close-line"></i></button>
+            </div>
+            <p class="modal-text" id="confirm-modal-message"></p>
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="resolveConfirm(false)">Cancelar</button>
+                <button class="modal-btn danger" id="confirm-modal-accept" onclick="resolveConfirm(true)">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bandeja de subida con progreso -->
+    <div id="upload-tray">
+        <div class="upload-tray-header" onclick="toggleUploadTray()">
+            <span id="upload-tray-title"><i class="ri-upload-cloud-2-line"></i> Subiendo archivos</span>
+            <span class="right">
+                <button id="upload-tray-retry-all" class="upload-tray-retry-btn" style="display:none;" onclick="event.stopPropagation(); retryAllFailed();"><i class="ri-refresh-line"></i> Reintentar</button>
+                <span id="upload-tray-count"></span>
+                <i class="ri-arrow-down-s-line" id="upload-tray-chevron"></i>
+            </span>
+        </div>
+        <div class="upload-tray-body" id="upload-tray-body"></div>
+    </div>
+
+    <!-- Toasts -->
+    <div id="toast-container"></div>
+
+    <!-- Script de Lógica -->
+    <script src="/static/main.js"></script>
+    <script>
+        // Funciones para el manejo de pestañas y carga de logs en el Admin Panel
+        function switchAdminTab(tab) {
+            const usersSection = document.getElementById('admin-users-section');
+            const logsSection = document.getElementById('admin-logs-section');
+            const usersBtn = document.getElementById('tab-users-btn');
+            const logsBtn = document.getElementById('tab-logs-btn');
+
+            if (tab === 'users') {
+                usersSection.style.display = 'block';
+                logsSection.style.display = 'none';
+                usersBtn.className = 'modal-btn primary';
+                logsBtn.className = 'modal-btn';
+            } else {
+                usersSection.style.display = 'none';
+                logsSection.style.display = 'block';
+                usersBtn.className = 'modal-btn';
+                logsBtn.className = 'modal-btn primary';
+                loadAdminLogs();
+            }
+        }
+
+        async function loadAdminLogs() {
+            const tbody = document.getElementById('logs-tbody');
+            tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; padding: 20px;'>Cargando registros...</td></tr>";
+            
+            try {
+                const res = await fetch('/api/admin/logs');
+                if (res.ok) {
+                    const logs = await res.json();
+                    tbody.innerHTML = "";
+                    
+                    if (logs.length === 0) {
+                        tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; padding: 20px; color: var(--text-secondary);'>No hay registros de actividad aún.</td></tr>";
+                        return;
+                    }
+                    
+                    logs.forEach(log => {
+                        const dateStr = new Date(log.timestamp * 1000).toLocaleString();
+                        const tr = document.createElement('tr');
+                        tr.style.borderBottom = "1px solid var(--border)";
+                        tr.innerHTML = `
+                            <td style="padding: 8px; font-weight: 500;">${log.admin_username}</td>
+                            <td style="padding: 8px;">${log.action}</td>
+                            <td style="padding: 8px; color: var(--text-secondary);">${log.target_user}</td>
+                            <td style="padding: 8px; font-size: 11px; color: var(--text-secondary);">${dateStr}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; padding: 20px; color: var(--danger);'>Error al cargar los logs.</td></tr>";
+                }
+            } catch (e) {
+                tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; padding: 20px; color: var(--danger);'>Error de conexión.</td></tr>";
+            }
+        }
+    </script>
+</body>
+</html>
