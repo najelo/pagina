@@ -298,7 +298,7 @@
                         localStorage.setItem('najelo_user', JSON.stringify(data.user));
                         document.cookie = "najelo_uid=" + data.user.id + "; path=/; max-age=604800; SameSite=None; Secure";
                     }
-                    window.location.href = "/?auth_uid=" + (data.user ? data.user.id : "");
+                    window.location.href = "/";
                 } else {
                     errorMsg.innerText = data.detail || "Error al iniciar sesión";
                 }
