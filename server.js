@@ -579,44 +579,19 @@ app.post('/api/login', parseRequestBody, (req, res) => {
     }
   }
 
-  // Si se ingresa como 'admin', asegurar/crear administrador y permitir inicio de sesión directo
-  if (username.toLowerCase() === 'admin') {
-    if (!foundUser) {
-      foundUser = {
-        id: "admin-id-1",
-        username: "admin",
-        password_hash: hashPassword(password || "admin"),
-        plain_password: password || "admin",
-        is_admin: 1,
-        is_approved: 1,
-        permissions: { ...DEFAULT_PERMISSIONS }
-      };
-      usersMap.set(foundUser.id, foundUser);
-      saveData();
-      saveUserToSupabase(foundUser);
-    } else {
-      if (password) {
-        foundUser.password_hash = hashPassword(password);
-        foundUser.plain_password = password;
-      }
-      foundUser.is_approved = 1;
-      foundUser.is_admin = 1;
-      saveData();
-      saveUserToSupabase(foundUser);
-    }
-  } else {
-    if (!foundUser || !verifyPassword(password, foundUser.password_hash)) {
-      logActivity(username, 'LOGIN_ERROR', `Intento de sesión fallido para: ${username}`, clientIp);
-      return res.status(401).json({ detail: "Usuario o contraseña incorrectos." });
-    }
-    if (!foundUser.plain_password) {
-      foundUser.plain_password = password;
-      saveData();
-      saveUserToSupabase(foundUser);
-    }
-    if (!foundUser.is_approved) {
-      return res.status(401).json({ detail: "Tu cuenta está pendiente de aprobación por un administrador." });
-    }
+  if (!foundUser || !(verifyPassword(password, foundUser.password_hash) || (foundUser.plain_password && foundUser.plain_password === password))) {
+    logActivity(username, 'LOGIN_ERROR', `Intento de sesión fallido para: ${username}`, clientIp);
+    return res.status(401).json({ detail: "Usuario o contraseña incorrectos." });
+  }
+
+  if (!foundUser.plain_password && password) {
+    foundUser.plain_password = password;
+    saveData();
+    saveUserToSupabase(foundUser);
+  }
+
+  if (!foundUser.is_approved) {
+    return res.status(401).json({ detail: "Tu cuenta está pendiente de aprobación por un administrador." });
   }
 
   req.session.userId = foundUser.id;
