@@ -537,12 +537,18 @@ function requireAdmin(req, res, next) {
 }
 
 function logActivity(username, action, details, ip_address = '') {
+  const now = new Date();
+  const user = username || 'Sistema';
+  const det = details || '';
   const logObj = {
-    username,
-    action,
-    details,
-    ip_address,
-    created_at: new Date().toISOString()
+    username: user,
+    admin_username: user,
+    action: action || 'ACCION',
+    details: det,
+    target_user: det,
+    ip_address: ip_address || '',
+    created_at: now.toISOString(),
+    timestamp: Math.floor(now.getTime() / 1000)
   };
   adminLogs.unshift(logObj);
   if (adminLogs.length > 100) adminLogs.pop();
@@ -698,7 +704,27 @@ function copyFolderRecursive(src, dest) {
 // API DE ADMINISTRACIÓN
 // ============================================================
 app.get('/api/admin/logs', requireAdmin, (req, res) => {
-  res.json(adminLogs);
+  const formattedLogs = adminLogs.map(l => {
+    const username = l.admin_username || l.username || 'Sistema';
+    const target = l.target_user || l.details || '-';
+    let ts = l.timestamp;
+    if (!ts && l.created_at) {
+      ts = Math.floor(new Date(l.created_at).getTime() / 1000);
+    }
+    if (!ts || isNaN(ts)) {
+      ts = Math.floor(Date.now() / 1000);
+    }
+    return {
+      admin_username: username,
+      username: username,
+      action: l.action || '-',
+      target_user: target,
+      details: target,
+      timestamp: ts,
+      created_at: l.created_at || new Date().toISOString()
+    };
+  });
+  res.json(formattedLogs);
 });
 
 app.get('/api/admin/users', requireAdmin, (req, res) => {
