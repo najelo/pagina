@@ -60,6 +60,10 @@ let searchDebounceTimer = null;
 let deferredThumbObserver = null;
 
 document.addEventListener("DOMContentLoaded", () => {
+    if (window.location.search.includes('auth_uid')) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     sortBy = localStorage.getItem('najelo-sort-by') || 'name';
     sortOrder = localStorage.getItem('najelo-sort-order') || 'asc';
     const sortSelect = document.getElementById('sort-select');
