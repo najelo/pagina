@@ -445,13 +445,21 @@
                     }
                     
                     logs.forEach(log => {
-                        const dateStr = new Date(log.timestamp * 1000).toLocaleString();
+                        const adminUser = log.admin_username || log.username || 'Sistema';
+                        const targetUser = log.target_user || log.details || '-';
+                        let dateStr = '-';
+                        if (log.timestamp && !isNaN(log.timestamp)) {
+                            dateStr = new Date(log.timestamp * 1000).toLocaleString();
+                        } else if (log.created_at) {
+                            const d = new Date(log.created_at);
+                            dateStr = isNaN(d.getTime()) ? '-' : d.toLocaleString();
+                        }
                         const tr = document.createElement('tr');
                         tr.style.borderBottom = "1px solid var(--border)";
                         tr.innerHTML = `
-                            <td style="padding: 8px; font-weight: 500;">${log.admin_username}</td>
-                            <td style="padding: 8px;">${log.action}</td>
-                            <td style="padding: 8px; color: var(--text-secondary);">${log.target_user}</td>
+                            <td style="padding: 8px; font-weight: 500;">${adminUser}</td>
+                            <td style="padding: 8px;">${log.action || '-'}</td>
+                            <td style="padding: 8px; color: var(--text-secondary);">${targetUser}</td>
                             <td style="padding: 8px; font-size: 11px; color: var(--text-secondary);">${dateStr}</td>
                         `;
                         tbody.appendChild(tr);
