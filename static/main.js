@@ -426,20 +426,21 @@ function selectItemForMenu(file, fullPath) {
     selectedItemMeta = { is_dir: file.is_dir, is_protected: !!file.is_protected };
 }
 
+let unlockedProtectedItems = new Set();
+let pendingItemToOpen = null;
+
 async function handleOpenItem(itemPath, isDir) {
     const targetFile = currentDisplayedItems.find(f => f.path === itemPath);
 
-    if (targetFile && targetFile.is_protected) {
-        const pwd = prompt("Este elemento está protegido con contraseña:");
-        if (!pwd) return;
-        const form = new FormData();
-        form.append("item_path", itemPath);
-        form.append("password", pwd);
-        const checkRes = await fetch('/api/verify-item-password', { method: 'POST', body: form });
-        if (!checkRes.ok) {
-            showToast("Contraseña incorrecta", "error");
-            return;
-        }
+    if (targetFile && targetFile.is_protected && !unlockedProtectedItems.has(itemPath)) {
+        pendingItemToOpen = { itemPath, isDir, name: targetFile ? targetFile.name : itemPath.split('/').pop() };
+        const nameEl = document.getElementById('enter-protected-item-name');
+        const inputEl = document.getElementById('enter-protected-password-input');
+        if (nameEl) nameEl.textContent = targetFile ? targetFile.name : itemPath.split('/').pop();
+        if (inputEl) inputEl.value = '';
+        openModal('enter-protected-modal');
+        setTimeout(() => { if (inputEl) inputEl.focus(); }, 50);
+        return;
     }
 
     if (isDir) {
@@ -447,6 +448,42 @@ async function handleOpenItem(itemPath, isDir) {
     } else {
         selectedItem = itemPath;
         openViewer(targetFile ? targetFile.name : itemPath.split('/').pop());
+    }
+}
+
+async function submitEnterProtected() {
+    if (!pendingItemToOpen) return;
+    const inputEl = document.getElementById('enter-protected-password-input');
+    const pwd = inputEl ? inputEl.value : '';
+    if (!pwd) {
+        showToast("Por favor ingresa la contraseña", "error");
+        return;
+    }
+
+    const form = new FormData();
+    form.append("item_path", pendingItemToOpen.itemPath);
+    form.append("password", pwd);
+
+    try {
+        const checkRes = await fetch('/api/verify-item-password', { method: 'POST', body: form });
+        if (checkRes.ok) {
+            const itemToOpen = { ...pendingItemToOpen };
+            unlockedProtectedItems.add(itemToOpen.itemPath);
+            closeModal('enter-protected-modal');
+            pendingItemToOpen = null;
+
+            if (itemToOpen.isDir) {
+                loadFiles(itemToOpen.itemPath);
+            } else {
+                selectedItem = itemToOpen.itemPath;
+                openViewer(itemToOpen.name);
+            }
+        } else {
+            const err = await checkRes.json().catch(() => ({}));
+            showToast(err.detail || "Contraseña incorrecta", "error");
+        }
+    } catch (e) {
+        showToast("Error de conexión", "error");
     }
 }
 
@@ -945,6 +982,7 @@ async function submitUnprotect() {
             closeModal('unprotect-modal');
             showToast("Se ha quitado la protección", "success");
             loadFiles(currentSubPath);
+            loadAdminProtected();
         } else {
             const err = await res.json().catch(() => ({}));
             showToast(err.detail || "Contraseña incorrecta", "error");
@@ -1800,25 +1838,12 @@ async function submitAdminChangeProtectedPassword() {
     }
 }
 
-async function adminUnprotectItem(itemPath) {
-    const ok = await showConfirm(`¿Quitar la protección de "${itemPath}"?`, { title: "Quitar protección" });
-    if (!ok) return;
-
-    const form = new FormData();
-    form.append("item_path", itemPath);
-
-    try {
-        const res = await fetch('/api/unprotect', { method: 'POST', body: form });
-        if (res.ok) {
-            showToast("Protección eliminada", "success");
-            loadAdminProtected();
-            loadFiles(currentSubPath);
-        } else {
-            showToast("Error al quitar protección", "error");
-        }
-    } catch (e) {
-        showToast("Error de conexión", "error");
-    }
+function adminUnprotectItem(itemPath) {
+    selectedItem = itemPath;
+    const input = document.getElementById('unprotect-password-input');
+    if (input) input.value = '';
+    openModal('unprotect-modal');
+    setTimeout(() => { if (input) input.focus(); }, 50);
 }
 
 async function loadAdminLogs() {
