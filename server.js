@@ -552,8 +552,8 @@ saveData();
 // MIDDLEWARE CONFIGURACIÓN
 // ============================================================
 app.set('trust proxy', 1);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(session({
   secret: process.env.SESSION_SECRET || 'najelo_cloud_secret_key_2026',
@@ -1400,18 +1400,23 @@ app.post('/upload', requirePermission('can_upload'), uploadMulter.single('file')
   }
 
   const destFile = path.join(destDir, filename);
-  fs.copyFileSync(req.file.path, destFile);
 
-  if (isBunnyEnabled()) {
+  try {
     try {
-      const fileBuf = fs.readFileSync(req.file.path);
-      await bunnyUploadFile(subDir, filename, fileBuf);
-    } catch (e) {
-      console.error("[BunnyStorage] Upload error:", e.message);
+      fs.renameSync(req.file.path, destFile);
+    } catch {
+      fs.copyFileSync(req.file.path, destFile);
+      try { fs.unlinkSync(req.file.path); } catch(e) {}
     }
-  }
 
-  try { fs.unlinkSync(req.file.path); } catch(e) {}
+    if (isBunnyEnabled()) {
+      await bunnyUploadFile(subDir, filename, destFile);
+    }
+  } catch (e) {
+    console.error("[Upload] Error procesando archivo subido:", e.message);
+  } finally {
+    try { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch(e) {}
+  }
 
   logActivity(req.user.username, "FILE_UPLOADED", `Subió el archivo '${filename}' en la ruta '${subDir}'`, req.ip || '');
 
@@ -1456,10 +1461,8 @@ app.get('/view', requirePermission('can_view'), async (req, res) => {
   }
 
   if (isBunnyEnabled()) {
-    const buf = await bunnyDownloadBuffer(itemPath);
-    if (buf) {
-      return res.send(buf);
-    }
+    const streamed = await pipeBunnyToResponse(itemPath, req, res);
+    if (streamed) return;
   }
 
   return res.status(404).send("Archivo no encontrado");
@@ -1480,11 +1483,8 @@ app.get('/download', requirePermission('can_view'), async (req, res) => {
   }
 
   if (isBunnyEnabled()) {
-    const buf = await bunnyDownloadBuffer(itemPath);
-    if (buf) {
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-      return res.send(buf);
-    }
+    const streamed = await pipeBunnyToResponse(itemPath, req, res, fileName);
+    if (streamed) return;
   }
 
   return res.status(404).send("Archivo no encontrado");
@@ -1571,10 +1571,8 @@ app.get('/s/:token', async (req, res) => {
     return res.redirect(302, cdnUrl);
   }
   if (isBunnyEnabled()) {
-    const buf = await bunnyDownloadBuffer(share.item_path);
-    if (buf) {
-      return res.send(buf);
-    }
+    const streamed = await pipeBunnyToResponse(share.item_path, req, res);
+    if (streamed) return;
   }
   return res.status(404).send("Archivo no encontrado");
 });
