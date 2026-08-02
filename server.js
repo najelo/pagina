@@ -171,19 +171,32 @@ async function bunnyListFiles(relPath = '') {
   }
 }
 
-async function bunnyUploadFile(relPath, fileName, buffer) {
+async function bunnyUploadFile(relPath, fileName, filePathOrBuffer) {
   if (!isBunnyEnabled()) return false;
   try {
     const fullRel = relPath ? `${relPath}/${fileName}` : fileName;
     const url = getBunnyUrl(fullRel);
-    const res = await fetch(url, {
+
+    const headers = {
+      'AccessKey': BUNNY_API_KEY,
+      'Content-Type': 'application/octet-stream'
+    };
+
+    let fetchOptions = {
       method: 'PUT',
-      headers: {
-        'AccessKey': BUNNY_API_KEY,
-        'Content-Type': 'application/octet-stream'
-      },
-      body: buffer
-    });
+      headers
+    };
+
+    if (typeof filePathOrBuffer === 'string') {
+      const stats = fs.statSync(filePathOrBuffer);
+      headers['Content-Length'] = stats.size;
+      fetchOptions.body = fs.createReadStream(filePathOrBuffer);
+      fetchOptions.duplex = 'half';
+    } else {
+      fetchOptions.body = filePathOrBuffer;
+    }
+
+    const res = await fetch(url, fetchOptions);
     return res.ok;
   } catch (e) {
     console.error("[BunnyStorage] Error subiendo archivo:", e.message);
@@ -226,6 +239,48 @@ async function bunnyDelete(relPath) {
     return res.ok;
   } catch (e) {
     console.error("[BunnyStorage] Error eliminando elemento:", e.message);
+    return false;
+  }
+}
+
+async function pipeBunnyToResponse(relPath, req, res, attachmentFileName = null) {
+  if (!isBunnyEnabled()) return false;
+  try {
+    const url = getBunnyUrl(relPath);
+    const headers = { 'AccessKey': BUNNY_API_KEY };
+    if (req && req.headers && req.headers.range) {
+      headers['Range'] = req.headers.range;
+    }
+    const bunnyRes = await fetch(url, { method: 'GET', headers });
+    if (!bunnyRes.ok) return false;
+
+    res.status(bunnyRes.status);
+    const contentType = bunnyRes.headers.get('content-type');
+    const contentLength = bunnyRes.headers.get('content-length');
+    const acceptRanges = bunnyRes.headers.get('accept-ranges');
+    const contentRange = bunnyRes.headers.get('content-range');
+
+    if (contentType) res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+    if (contentRange) res.setHeader('Content-Range', contentRange);
+
+    if (attachmentFileName) {
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(attachmentFileName)}"`);
+    } else {
+      const cd = bunnyRes.headers.get('content-disposition');
+      if (cd) res.setHeader('Content-Disposition', cd);
+    }
+
+    if (bunnyRes.body) {
+      const { Readable } = require('stream');
+      const nodeStream = Readable.fromWeb(bunnyRes.body);
+      nodeStream.pipe(res);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error("[BunnyStorage] Stream error:", e.message);
     return false;
   }
 }
