@@ -515,6 +515,11 @@ app.use(session({
 
 app.use('/static', express.static(path.join(__dirname, 'static')));
 
+app.get(['/favicon.ico', '/favicon.svg', '/favicon.png', '/apple-touch-icon.png'], (req, res) => {
+  res.type('image/svg+xml');
+  res.sendFile(path.join(__dirname, 'static', 'favicon.svg'));
+});
+
 // ============================================================
 // MIDDLEWARES DE AUTENTICACIÓN Y ROLES
 // ============================================================
@@ -981,9 +986,10 @@ app.post('/api/protect', requireUser, parseRequestBody, (req, res) => {
     return res.status(400).json({ detail: "Contraseña muy corta" });
   }
   const pwdHash = hashPassword(password);
-  protectedItemsMap.set(itemPath, pwdHash);
+  const protVal = { hash: pwdHash, plain: password };
+  protectedItemsMap.set(itemPath, protVal);
   saveData();
-  saveProtectedItemToSupabase(itemPath, pwdHash);
+  saveProtectedItemToSupabase(itemPath, protVal);
   logActivity(req.user.username, "ITEM_PROTECTED", `Protegió con contraseña '${itemPath}'`);
   return res.json({ status: "ok" });
 });
@@ -1000,10 +1006,44 @@ app.post('/api/unprotect', requireUser, parseRequestBody, (req, res) => {
 app.post('/api/verify-item-password', requireUser, parseRequestBody, (req, res) => {
   const itemPath = req.body.item_path;
   const password = req.body.password || '';
-  const storedHash = protectedItemsMap.get(itemPath);
+  const stored = protectedItemsMap.get(itemPath);
+  if (!stored) return res.json({ status: "ok" });
+  const storedHash = typeof stored === 'object' ? stored.hash : stored;
   if (!storedHash || !verifyPassword(password, storedHash)) {
     return res.status(401).json({ detail: "Contraseña incorrecta" });
   }
+  return res.json({ status: "ok" });
+});
+
+app.get('/api/admin/protected-items', requireAdmin, (req, res) => {
+  const list = [];
+  for (const [pathKey, val] of protectedItemsMap.entries()) {
+    const hash = typeof val === 'object' ? val.hash : val;
+    const plain = typeof val === 'object' ? (val.plain || '') : '';
+    list.push({
+      item_path: pathKey,
+      plain_password: plain,
+      password_hash: hash
+    });
+  }
+  res.json(list);
+});
+
+app.post('/api/admin/change-protected-password', requireAdmin, parseRequestBody, (req, res) => {
+  const itemPath = req.body.item_path;
+  const newPassword = req.body.new_password || '';
+  if (!itemPath) {
+    return res.status(400).json({ detail: "Ruta del elemento no especificada" });
+  }
+  if (!newPassword || newPassword.trim().length < 3) {
+    return res.status(400).json({ detail: "La contraseña debe tener al menos 3 caracteres" });
+  }
+  const pwdHash = hashPassword(newPassword.trim());
+  const protVal = { hash: pwdHash, plain: newPassword.trim() };
+  protectedItemsMap.set(itemPath, protVal);
+  saveData();
+  saveProtectedItemToSupabase(itemPath, protVal);
+  logActivity(req.user.username, "ITEM_PASSWORD_CHANGED", `Cambió la contraseña de '${itemPath}'`);
   return res.json({ status: "ok" });
 });
 
@@ -1395,6 +1435,21 @@ app.get('/download', requirePermission('can_view'), async (req, res) => {
 app.delete('/delete', requirePermission('can_delete'), async (req, res) => {
   const itemPath = req.query.path || '';
   const fullPath = safePath(itemPath);
+
+  // Verificar si el elemento o alguna subcarpeta/archivo dentro está protegido
+  let protectedKey = null;
+  for (const key of protectedItemsMap.keys()) {
+    if (key === itemPath || key.startsWith(itemPath + '/')) {
+      protectedKey = key;
+      break;
+    }
+  }
+
+  if (protectedKey && (!req.user || !req.user.is_admin)) {
+    return res.status(403).json({
+      detail: `No se puede eliminar: '${protectedKey === itemPath ? itemPath : protectedKey}' está protegido con contraseña. Solamente un administrador puede eliminarlo o quitar su protección.`
+    });
+  }
 
   if (fs.existsSync(fullPath)) {
     fs.rmSync(fullPath, { recursive: true, force: true });
