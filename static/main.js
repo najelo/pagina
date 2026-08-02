@@ -2154,3 +2154,120 @@ function formatDate(unixSeconds) {
     return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) +
         ' ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 }
+
+// ============================================================
+// FUNCIONES DE LA PAPELERA
+// ============================================================
+async function openTrashModal() {
+    document.getElementById('nav-drive')?.classList.remove('active');
+    document.getElementById('nav-trash')?.classList.add('active');
+
+    openModal('trash-modal');
+    await loadTrashItems();
+}
+
+async function loadTrashItems() {
+    const tbody = document.getElementById('trash-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--text-secondary);">Cargando elementos de la papelera...</td></tr>`;
+
+    try {
+        const res = await fetch('/api/trash');
+        if (!res.ok) throw new Error();
+        const items = await res.json();
+
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--text-secondary);">La papelera está vacía.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = items.map(item => {
+            const icon = item.is_dir ? 'ri-folder-3-fill' : 'ri-file-text-line';
+            const iconColor = item.is_dir ? '#fbbc05' : 'var(--primary)';
+            const dateStr = formatDate(item.deleted_at);
+            const itemId = escapeHtml(item.id || '');
+
+            return `
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="padding: 10px; font-weight: 500;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <i class="${icon}" style="color: ${iconColor}; font-size: 18px;"></i>
+                            <div>
+                                <div style="font-weight:600; color:var(--text-main); word-break:break-all;">${escapeHtml(item.name || '')}</div>
+                                <div style="font-size:11px; color:var(--text-secondary); word-break:break-all;">Ruta original: ${escapeHtml(item.original_path || '')}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="padding: 10px; font-size: 12px; color: var(--text-secondary); white-space: nowrap;">
+                        ${dateStr}
+                    </td>
+                    <td style="padding: 10px; text-align: right; white-space: nowrap;">
+                        <button onclick="restoreTrashItem('${itemId}')" class="modal-btn primary" style="padding: 4px 10px; font-size: 12px; margin-right: 6px;" title="Restaurar elemento">
+                            <i class="ri-history-line"></i> Restaurar
+                        </button>
+                        <button onclick="deletePermanentTrashItem('${itemId}')" class="modal-btn danger" style="padding: 4px 10px; font-size: 12px;" title="Eliminar definitivamente">
+                            <i class="ri-delete-bin-line"></i> Eliminar
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--danger);">Error al cargar la papelera.</td></tr>`;
+    }
+}
+
+async function restoreTrashItem(trashId) {
+    try {
+        const form = new FormData();
+        form.append("id", trashId);
+        const res = await fetch('/api/trash/restore', { method: 'POST', body: form });
+        if (res.ok) {
+            showToast("Elemento restaurado a su ubicación original", "success");
+            loadTrashItems();
+            loadFiles(currentSubPath);
+            refreshStorage();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.detail || "Error al restaurar elemento", "error");
+        }
+    } catch (e) {
+        showToast("Error de conexión", "error");
+    }
+}
+
+async function deletePermanentTrashItem(trashId) {
+    const ok = await showConfirm("¿Eliminar este elemento definitivamente? Esta acción no se puede deshacer.", { title: "Eliminar definitivamente", acceptLabel: "Eliminar" });
+    if (!ok) return;
+
+    try {
+        const res = await fetch(`/api/trash/delete-permanent?id=${encodeURIComponent(trashId)}`, { method: 'DELETE' });
+        if (res.ok) {
+            showToast("Elemento eliminado definitivamente", "success");
+            loadTrashItems();
+            refreshStorage();
+        } else {
+            showToast("Error al eliminar elemento", "error");
+        }
+    } catch (e) {
+        showToast("Error de conexión", "error");
+    }
+}
+
+async function emptyTrash() {
+    const ok = await showConfirm("¿Vaciar la papelera? Todos los elementos se eliminarán definitivamente y no se podrán recuperar.", { title: "Vaciar papelera", acceptLabel: "Vaciar definitivamente" });
+    if (!ok) return;
+
+    try {
+        const res = await fetch('/api/trash/empty', { method: 'POST' });
+        if (res.ok) {
+            showToast("Papelera vaciada correctamente", "success");
+            loadTrashItems();
+            refreshStorage();
+        } else {
+            showToast("Error al vaciar la papelera", "error");
+        }
+    } catch (e) {
+        showToast("Error de conexión", "error");
+    }
+}
