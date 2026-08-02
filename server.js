@@ -580,15 +580,22 @@ function logActivity(username, action, details, ip_address = '') {
   if (adminLogs.length > 300) adminLogs.pop();
 
   if (supabase) {
+    // Solo enviar columnas existentes en la tabla admin_logs de Supabase: username, action, details, ip_address, created_at
     supabase.from('admin_logs').insert([{
-      admin_username: user,
       username: user,
       action: action || 'ACCION',
       details: det,
-      target_user: det,
       ip_address: ip_address || '',
       created_at: now.toISOString()
-    }]).then().catch(() => {});
+    }]).then(({ error }) => {
+      if (error) {
+        console.error("[Supabase] Error insertando en admin_logs:", error.message, error.details || '');
+      } else {
+        console.log(`[Supabase] Log registrado con éxito: ${action} - ${user}`);
+      }
+    }).catch(e => {
+      console.error("[Supabase] Excepción en logActivity:", e.message);
+    });
   }
 }
 
@@ -747,9 +754,23 @@ app.get('/api/admin/logs', requireAdmin, async (req, res) => {
   if (supabase) {
     try {
       const { data: dbLogs, error } = await supabase.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(300);
-      if (!error && dbLogs) {
+      if (error) {
+        console.error("[Supabase] Error al consultar admin_logs:", error.message);
+      } else if (dbLogs && dbLogs.length > 0) {
         adminLogs.length = 0;
-        dbLogs.forEach(l => adminLogs.push(l));
+        dbLogs.forEach(l => {
+          adminLogs.push({
+            id: String(l.id || ''),
+            username: l.username || 'Sistema',
+            admin_username: l.username || 'Sistema',
+            action: l.action || '-',
+            details: l.details || '-',
+            target_user: l.details || '-',
+            ip_address: l.ip_address || '',
+            created_at: l.created_at || new Date().toISOString(),
+            timestamp: l.created_at ? Math.floor(new Date(l.created_at).getTime() / 1000) : Math.floor(Date.now() / 1000)
+          });
+        });
       }
     } catch (e) {
       console.error("[Supabase] Error al consultar admin_logs:", e.message);
