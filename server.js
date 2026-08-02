@@ -307,7 +307,15 @@ function loadLocalData() {
     if (fs.existsSync(USERS_FILE)) {
       const usersArr = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
       if (Array.isArray(usersArr)) {
-        usersArr.forEach(u => usersMap.set(u.id, u));
+        usersArr.forEach(u => {
+          // Limpiar entradas previas con el mismo username pero ID distinto
+          for (const [existingId, existingUser] of usersMap.entries()) {
+            if (existingUser.username === u.username && existingId !== u.id) {
+              usersMap.delete(existingId);
+            }
+          }
+          usersMap.set(u.id, u);
+        });
       }
     }
   } catch (e) {
@@ -352,6 +360,12 @@ async function syncWithSupabase() {
           try { perms = JSON.parse(perms); } catch(e) { perms = DEFAULT_PERMISSIONS; }
         }
         const strId = String(u.id);
+        // Limpiar cualquier ID anterior con el mismo username (ej. "admin-id-1")
+        for (const [existingId, existingUser] of usersMap.entries()) {
+          if (existingUser.username === u.username && existingId !== strId) {
+            usersMap.delete(existingId);
+          }
+        }
         usersMap.set(strId, {
           id: strId,
           username: u.username,
