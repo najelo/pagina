@@ -114,10 +114,15 @@ function isBunnyEnabled() {
 
 function getBunnyCdnUrl(relPath = '') {
   if (!BUNNY_PULL_ZONE_URL) return null;
+  let baseUrl = BUNNY_PULL_ZONE_URL;
+  if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+    baseUrl = `https://${baseUrl}`;
+  }
+  baseUrl = baseUrl.replace(/\/+$/, '');
   let cleanPath = (relPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-  if (!cleanPath) return BUNNY_PULL_ZONE_URL;
+  if (!cleanPath) return baseUrl;
   const parts = cleanPath.split('/').map(encodeURIComponent);
-  return `${BUNNY_PULL_ZONE_URL}/${parts.join('/')}`;
+  return `${baseUrl}/${parts.join('/')}`;
 }
 
 function getBunnyUrl(relPath = '') {
@@ -150,9 +155,10 @@ async function bunnyListFiles(relPath = '') {
     if (!Array.isArray(items)) return null;
 
     return items.map(item => {
-      const itemRel = relPath ? `${relPath}/${item.Name}` : item.Name;
+      const itemName = item.ObjectName || item.Name || '';
+      const itemRel = relPath ? `${relPath}/${itemName}` : itemName;
       return {
-        name: item.Name,
+        name: itemName,
         is_dir: Boolean(item.IsDirectory),
         is_protected: protectedItemsMap.has(itemRel),
         size: item.IsDirectory ? 0 : (item.Length || 0),
