@@ -211,11 +211,18 @@ async function bunnyCreateFolder(relPath, folderName) {
 async function bunnyDelete(relPath) {
   if (!isBunnyEnabled()) return false;
   try {
-    const url = getBunnyUrl(relPath);
+    let url = getBunnyUrl(relPath);
     const res = await fetch(url, {
       method: 'DELETE',
       headers: { 'AccessKey': BUNNY_API_KEY }
     });
+    if (!res.ok && !url.endsWith('/')) {
+      const resDir = await fetch(url + '/', {
+        method: 'DELETE',
+        headers: { 'AccessKey': BUNNY_API_KEY }
+      });
+      return resDir.ok;
+    }
     return res.ok;
   } catch (e) {
     console.error("[BunnyStorage] Error eliminando elemento:", e.message);
@@ -237,6 +244,60 @@ async function bunnyDownloadBuffer(relPath) {
   } catch (e) {
     console.error("[BunnyStorage] Error descargando archivo:", e.message);
     return null;
+  }
+}
+
+async function bunnyCopyItem(oldRelPath, newRelPath) {
+  if (!isBunnyEnabled()) return false;
+  try {
+    const cleanOld = (oldRelPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const cleanNew = (newRelPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    if (!cleanOld || !cleanNew || cleanOld === cleanNew) return false;
+
+    // Intentar como archivo descargando buffer
+    const buf = await bunnyDownloadBuffer(cleanOld);
+    if (buf !== null) {
+      const newParts = cleanNew.split('/');
+      const fileName = newParts.pop();
+      const parentDir = newParts.join('/');
+      return await bunnyUploadFile(parentDir, fileName, buf);
+    }
+
+    // Si no es un archivo, intentar como directorio listando elementos
+    const items = await bunnyListFiles(cleanOld);
+    if (items !== null) {
+      const newParts = cleanNew.split('/');
+      const folderName = newParts.pop();
+      const parentDir = newParts.join('/');
+      await bunnyCreateFolder(parentDir, folderName);
+
+      for (const item of items) {
+        const itemOld = `${cleanOld}/${item.name}`;
+        const itemNew = `${cleanNew}/${item.name}`;
+        await bunnyCopyItem(itemOld, itemNew);
+      }
+      return true;
+    }
+
+    return false;
+  } catch (e) {
+    console.error("[BunnyStorage] Error copiando en Bunny:", e.message);
+    return false;
+  }
+}
+
+async function bunnyMoveItem(oldRelPath, newRelPath) {
+  if (!isBunnyEnabled()) return false;
+  try {
+    const success = await bunnyCopyItem(oldRelPath, newRelPath);
+    if (success) {
+      await bunnyDelete(oldRelPath);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error("[BunnyStorage] Error moviendo/renombrando en Bunny:", e.message);
+    return false;
   }
 }
 
@@ -961,6 +1022,27 @@ app.post('/rename', requirePermission('can_rename'), parseRequestBody, async (re
     fs.renameSync(fullOld, fullNew);
   }
 
+  if (isBunnyEnabled()) {
+    await bunnyMoveItem(cleanOld, newPath);
+  }
+
+  for (const [key, pwdHash] of Array.from(protectedItemsMap.entries())) {
+    if (key === cleanOld) {
+      protectedItemsMap.delete(key);
+      protectedItemsMap.set(newPath, pwdHash);
+      saveProtectedItemToSupabase(key, null);
+      saveProtectedItemToSupabase(newPath, pwdHash);
+    } else if (key.startsWith(cleanOld + '/')) {
+      const sub = key.slice(cleanOld.length);
+      const updatedKey = newPath + sub;
+      protectedItemsMap.delete(key);
+      protectedItemsMap.set(updatedKey, pwdHash);
+      saveProtectedItemToSupabase(key, null);
+      saveProtectedItemToSupabase(updatedKey, pwdHash);
+    }
+  }
+  saveData();
+
   logActivity(req.user.username, "FILE_RENAMED", `Renombró '${cleanOld}' a '${newPath}'`, req.ip || '');
   return res.json({ status: "success" });
 });
@@ -980,6 +1062,27 @@ app.post('/move', requirePermission('can_move_copy'), parseRequestBody, async (r
     fs.renameSync(fullSource, fullDest);
   }
 
+  if (isBunnyEnabled()) {
+    await bunnyMoveItem(itemPath, destSub);
+  }
+
+  for (const [key, pwdHash] of Array.from(protectedItemsMap.entries())) {
+    if (key === itemPath) {
+      protectedItemsMap.delete(key);
+      protectedItemsMap.set(destSub, pwdHash);
+      saveProtectedItemToSupabase(key, null);
+      saveProtectedItemToSupabase(destSub, pwdHash);
+    } else if (key.startsWith(itemPath + '/')) {
+      const sub = key.slice(itemPath.length);
+      const updatedKey = destSub + sub;
+      protectedItemsMap.delete(key);
+      protectedItemsMap.set(updatedKey, pwdHash);
+      saveProtectedItemToSupabase(key, null);
+      saveProtectedItemToSupabase(updatedKey, pwdHash);
+    }
+  }
+  saveData();
+
   logActivity(req.user.username, "FILE_MOVED", `Movió '${itemPath}' a '${destSub}'`, req.ip || '');
   return res.json({ status: "success" });
 });
@@ -997,6 +1100,10 @@ app.post('/copy', requirePermission('can_move_copy'), parseRequestBody, async (r
     const destParent = path.dirname(fullDest);
     if (!fs.existsSync(destParent)) fs.mkdirSync(destParent, { recursive: true });
     copyFolderRecursive(fullSource, fullDest);
+  }
+
+  if (isBunnyEnabled()) {
+    await bunnyCopyItem(itemPath, destSub);
   }
 
   logActivity(req.user.username, "FILE_COPIED", `Copió '${itemPath}' a '${destSub}'`, req.ip || '');
