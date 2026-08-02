@@ -61,7 +61,7 @@
                 <button id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Menú"><i class="ri-menu-line"></i></button>
                 <div class="search-bar">
                     <i class="ri-search-line" style="color: var(--text-secondary);"></i>
-                    <input type="search" id="search-input" name="search_q" autocomplete="off" placeholder="Buscar en toda la nube..." oninput="filterFiles()">
+                    <input type="search" id="search-input" name="najelo_file_search_field_no_autofill" autocomplete="new-password" aria-autocomplete="none" placeholder="Buscar en toda la nube..." readonly onfocus="this.removeAttribute('readonly');" onblur="if(!this.value) this.setAttribute('readonly', 'readonly');" oninput="filterFiles(event)">
                 </div>
             </div>
             <div class="user-actions">
