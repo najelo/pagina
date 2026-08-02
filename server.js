@@ -131,7 +131,10 @@ function getBunnyUrl(relPath = '') {
 }
 
 async function bunnyListFiles(relPath = '') {
-  if (!isBunnyEnabled()) return null;
+  if (!isBunnyEnabled()) {
+    console.log("[BunnyStorage] Bunny no está habilitado (faltan BUNNY_STORAGE_ZONE o BUNNY_API_KEY en las variables de entorno).");
+    return null;
+  }
   try {
     let url = getBunnyUrl(relPath);
     if (!url.endsWith('/')) url += '/';
@@ -139,7 +142,10 @@ async function bunnyListFiles(relPath = '') {
       method: 'GET',
       headers: { 'AccessKey': BUNNY_API_KEY, 'Accept': 'application/json' }
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[BunnyStorage] Error HTTP ${res.status} (${res.statusText}) al listar '${relPath}' en URL: ${url}`);
+      return null;
+    }
     const items = await res.json();
     if (!Array.isArray(items)) return null;
 
@@ -154,7 +160,7 @@ async function bunnyListFiles(relPath = '') {
       };
     });
   } catch (e) {
-    console.error("[BunnyStorage] Error listando archivos:", e.message);
+    console.error("[BunnyStorage] Excepción al listar archivos:", e.message);
     return null;
   }
 }
