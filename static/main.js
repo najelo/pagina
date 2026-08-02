@@ -50,7 +50,7 @@ let clipboardAction = null; // "copy" o "move"
 // Subida de archivos
 let uploadQueue = [];
 let activeUploads = 0;
-const MAX_CONCURRENT_UPLOADS = 3;
+const MAX_CONCURRENT_UPLOADS = 2;
 let uploadIdCounter = 0;
 let filesRefreshTimer = null;
 
@@ -1378,6 +1378,10 @@ function uploadSingleFile(task) {
     });
 
     xhr.open('POST', '/upload');
+    const uid = localStorage.getItem('najelo_user_id');
+    if (uid) {
+        xhr.setRequestHeader('X-User-Id', uid);
+    }
     xhr.send(form);
 }
 
