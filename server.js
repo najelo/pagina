@@ -577,10 +577,18 @@ function logActivity(username, action, details, ip_address = '') {
     timestamp: Math.floor(now.getTime() / 1000)
   };
   adminLogs.unshift(logObj);
-  if (adminLogs.length > 100) adminLogs.pop();
+  if (adminLogs.length > 300) adminLogs.pop();
 
   if (supabase) {
-    supabase.from('admin_logs').insert([logObj]).then().catch(() => {});
+    supabase.from('admin_logs').insert([{
+      admin_username: user,
+      username: user,
+      action: action || 'ACCION',
+      details: det,
+      target_user: det,
+      ip_address: ip_address || '',
+      created_at: now.toISOString()
+    }]).then().catch(() => {});
   }
 }
 
@@ -651,6 +659,7 @@ app.post('/api/register', parseRequestBody, (req, res) => {
   usersMap.set(newUser.id, newUser);
   saveData();
   saveUserToSupabase(newUser);
+  logActivity(username, "USER_REGISTERED", `Registro de nuevo usuario: ${username}`);
 
   return res.json({ message: "Cuenta creada con éxito." });
 });
@@ -689,6 +698,7 @@ app.post('/api/login', parseRequestBody, (req, res) => {
 
   req.session.userId = foundUser.id;
   res.cookie('najelo_uid', foundUser.id, { maxAge: 7 * 24 * 3600 * 1000, httpOnly: false });
+  logActivity(foundUser.username, 'LOGIN_SUCCESS', `Inicio de sesión exitoso`, clientIp);
 
   req.session.save(() => {
     res.json({
@@ -704,6 +714,10 @@ app.post('/api/login', parseRequestBody, (req, res) => {
 });
 
 app.get('/api/logout', (req, res) => {
+  const user = getCurrentUser(req);
+  if (user) {
+    logActivity(user.username, 'LOGOUT', `Cerró sesión`);
+  }
   if (req.session) {
     req.session.userId = null;
   }
@@ -729,10 +743,22 @@ function copyFolderRecursive(src, dest) {
 // ============================================================
 // API DE ADMINISTRACIÓN
 // ============================================================
-app.get('/api/admin/logs', requireAdmin, (req, res) => {
+app.get('/api/admin/logs', requireAdmin, async (req, res) => {
+  if (supabase) {
+    try {
+      const { data: dbLogs, error } = await supabase.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(300);
+      if (!error && dbLogs) {
+        adminLogs.length = 0;
+        dbLogs.forEach(l => adminLogs.push(l));
+      }
+    } catch (e) {
+      console.error("[Supabase] Error al consultar admin_logs:", e.message);
+    }
+  }
+
   const formattedLogs = adminLogs.map(l => {
     const username = l.admin_username || l.username || 'Sistema';
-    const target = l.target_user || l.details || '-';
+    const target = l.details || l.target_user || '-';
     let ts = l.timestamp;
     if (!ts && l.created_at) {
       ts = Math.floor(new Date(l.created_at).getTime() / 1000);
@@ -746,8 +772,9 @@ app.get('/api/admin/logs', requireAdmin, (req, res) => {
       action: l.action || '-',
       target_user: target,
       details: target,
+      ip_address: l.ip_address || '',
       timestamp: ts,
-      created_at: l.created_at || new Date().toISOString()
+      created_at: l.created_at || new Date(ts * 1000).toISOString()
     };
   });
   res.json(formattedLogs);
@@ -874,6 +901,7 @@ app.post('/api/protect', requireUser, parseRequestBody, (req, res) => {
   protectedItemsMap.set(itemPath, pwdHash);
   saveData();
   saveProtectedItemToSupabase(itemPath, pwdHash);
+  logActivity(req.user.username, "ITEM_PROTECTED", `Protegió con contraseña '${itemPath}'`);
   return res.json({ status: "ok" });
 });
 
@@ -882,6 +910,7 @@ app.post('/api/unprotect', requireUser, parseRequestBody, (req, res) => {
   protectedItemsMap.delete(itemPath);
   saveData();
   saveProtectedItemToSupabase(itemPath, null);
+  logActivity(req.user.username, "ITEM_UNPROTECTED", `Eliminó protección de '${itemPath}'`);
   return res.json({ status: "ok" });
 });
 
@@ -1227,6 +1256,8 @@ app.post('/create-folder', requirePermission('can_create_folder'), parseRequestB
     await bunnyCreateFolder(relPath, folderName);
   }
 
+  logActivity(req.user.username, "FOLDER_CREATED", `Creó la carpeta '${targetRel}'`, req.ip || '');
+
   return res.json({ status: "success" });
 });
 
@@ -1298,6 +1329,8 @@ app.delete('/delete', requirePermission('can_delete'), async (req, res) => {
   }
   saveData();
 
+  logActivity(req.user.username, "ITEM_DELETED", `Eliminó '${itemPath}'`, req.ip || '');
+
   return res.json({ status: "deleted" });
 });
 
@@ -1320,6 +1353,7 @@ app.post('/api/share', requireUser, parseRequestBody, (req, res) => {
 
   sharesMap.set(token, shareObj);
   saveShareToSupabase(shareObj);
+  logActivity(req.user.username, "SHARE_CREATED", `Generó enlace compartido para '${itemPath}'`);
 
   return res.json({ token, expires_at: expiresAt });
 });
