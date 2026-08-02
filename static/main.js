@@ -74,8 +74,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const startPath = localStorage.getItem('najelo-last-path') || "";
 
     const searchInput = document.getElementById('search-input');
-    if (searchInput) searchInput.value = "";
-    setTimeout(() => { if (searchInput) searchInput.value = ""; }, 100);
+    if (searchInput) {
+        searchInput.value = "";
+        [100, 300, 600, 1000].forEach(ms => {
+            setTimeout(() => {
+                if (document.activeElement !== searchInput && searchInput.value) {
+                    searchInput.value = "";
+                    if (isSearchMode) {
+                        isSearchMode = false;
+                        renderFiles(allFilesData);
+                        renderBreadcrumbs(currentSubPath);
+                    }
+                }
+            }, ms);
+        });
+    }
 
     loadFiles(startPath);
     checkAdminStatus();
@@ -459,6 +472,18 @@ function renderBreadcrumbs(path) {
 function filterFiles() {
     const searchInput = document.getElementById('search-input');
     if (!searchInput) return;
+
+    // Si el navegador autocompletó el campo sin que el usuario tenga el foco en el buscador, ignorarlo y limpiarlo
+    if (document.activeElement !== searchInput && searchInput.value) {
+        searchInput.value = "";
+        if (isSearchMode) {
+            isSearchMode = false;
+            renderFiles(allFilesData);
+            renderBreadcrumbs(currentSubPath);
+        }
+        return;
+    }
+
     const query = searchInput.value.trim();
 
     clearTimeout(searchDebounceTimer);
