@@ -343,14 +343,17 @@ async function syncWithSupabase() {
   // 1. Usuarios
   try {
     const { data: dbUsers, error } = await supabase.from('users').select('*');
-    if (!error && dbUsers && dbUsers.length > 0) {
+    if (error) {
+      console.error("[Supabase] Error consultando usuarios:", error.message, error.details || '');
+    } else if (dbUsers && dbUsers.length > 0) {
       dbUsers.forEach(u => {
         let perms = u.permissions;
         if (typeof perms === 'string') {
           try { perms = JSON.parse(perms); } catch(e) { perms = DEFAULT_PERMISSIONS; }
         }
-        usersMap.set(u.id, {
-          id: String(u.id),
+        const strId = String(u.id);
+        usersMap.set(strId, {
+          id: strId,
           username: u.username,
           password_hash: u.password_hash,
           plain_password: u.plain_password || '',
@@ -361,7 +364,7 @@ async function syncWithSupabase() {
       });
       console.log(`[Supabase] ${dbUsers.length} usuarios sincronizados.`);
     } else {
-      // Registrar admin por defecto en Supabase si no existe
+      console.log("[Supabase] La tabla 'users' está vacía o sin datos.");
       await saveUserToSupabase(defaultAdmin);
     }
   } catch (e) {
@@ -397,15 +400,34 @@ async function syncWithSupabase() {
 async function saveUserToSupabase(user) {
   if (!supabase) return;
   try {
-    await supabase.from('users').upsert({
-      id: user.id,
+    // Solo enviar campos reales de la tabla public.users: id (int8), username (text), password_hash (text), is_admin (int2), is_approved (int2)
+    const payload = {
       username: user.username,
       password_hash: user.password_hash,
-      plain_password: user.plain_password || '',
       is_admin: user.is_admin ? 1 : 0,
-      is_approved: user.is_approved ? 1 : 0,
-      permissions: typeof user.permissions === 'object' ? user.permissions : DEFAULT_PERMISSIONS
-    }, { onConflict: 'id' });
+      is_approved: user.is_approved ? 1 : 0
+    };
+
+    if (user.id && !isNaN(Number(user.id))) {
+      payload.id = Number(user.id);
+      const { error } = await supabase.from('users').upsert(payload, { onConflict: 'id' });
+      if (error) console.error("[Supabase] Error en upsert usuario:", error.message);
+    } else {
+      const { data: existing } = await supabase.from('users').select('id').eq('username', user.username).maybeSingle();
+      if (existing && existing.id) {
+        payload.id = existing.id;
+        const { error } = await supabase.from('users').upsert(payload, { onConflict: 'id' });
+        if (error) console.error("[Supabase] Error en update usuario:", error.message);
+      } else {
+        const { data: inserted, error } = await supabase.from('users').insert([payload]).select().single();
+        if (error) {
+          console.error("[Supabase] Error insertando usuario:", error.message);
+        } else if (inserted && inserted.id) {
+          user.id = String(inserted.id);
+          usersMap.set(user.id, user);
+        }
+      }
+    }
   } catch (e) {
     console.error("[Supabase] Error guardando usuario:", e.message);
   }
@@ -414,7 +436,11 @@ async function saveUserToSupabase(user) {
 async function deleteUserFromSupabase(userId) {
   if (!supabase) return;
   try {
-    await supabase.from('users').delete().eq('id', userId);
+    if (!isNaN(Number(userId))) {
+      await supabase.from('users').delete().eq('id', Number(userId));
+    } else {
+      await supabase.from('users').delete().eq('id', userId);
+    }
   } catch (e) {
     console.error("[Supabase] Error eliminando usuario:", e.message);
   }
