@@ -63,11 +63,33 @@ if (!fs.existsSync(DATA_DIR)) {
 
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const PROTECTED_FILE = path.join(DATA_DIR, 'protected.json');
+const TRASH_FILE = path.join(DATA_DIR, 'trash.json');
+
+const TRASH_DIR = path.join(UPLOAD_DIR, '.papelera');
+if (!fs.existsSync(TRASH_DIR)) {
+  fs.mkdirSync(TRASH_DIR, { recursive: true });
+}
+
+function copyFolderRecursive(src, dest) {
+  if (!fs.existsSync(src)) return;
+  const stats = fs.statSync(src);
+  if (stats.isDirectory()) {
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+    fs.readdirSync(src).forEach(childItemName => {
+      copyFolderRecursive(path.join(src, childItemName), path.join(dest, childItemName));
+    });
+  } else {
+    const parentDir = path.dirname(dest);
+    if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+    fs.copyFileSync(src, dest);
+  }
+}
 
 const usersMap = new Map();
 const adminLogs = [];
 const protectedItemsMap = new Map();
 const sharesMap = new Map();
+const trashItemsMap = new Map();
 
 const DEFAULT_PERMISSIONS = {
   can_view: true,
@@ -154,7 +176,10 @@ async function bunnyListFiles(relPath = '') {
     const items = await res.json();
     if (!Array.isArray(items)) return null;
 
-    return items.map(item => {
+    return items.filter(item => {
+      const itemName = item.ObjectName || item.Name || '';
+      return itemName && !itemName.startsWith('.');
+    }).map(item => {
       const itemName = item.ObjectName || item.Name || '';
       const itemRel = relPath ? `${relPath}/${itemName}` : itemName;
       return {
@@ -239,6 +264,30 @@ async function bunnyDelete(relPath) {
     return res.ok;
   } catch (e) {
     console.error("[BunnyStorage] Error eliminando elemento:", e.message);
+    return false;
+  }
+}
+
+async function bunnyMoveItem(srcRelPath, destRelPath) {
+  if (!isBunnyEnabled()) return false;
+  try {
+    const srcUrl = getBunnyUrl(srcRelPath);
+    const destUrl = getBunnyUrl(destRelPath);
+    const res = await fetch(srcUrl, { headers: { 'AccessKey': BUNNY_API_KEY } });
+    if (!res.ok) return false;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const putRes = await fetch(destUrl, {
+      method: 'PUT',
+      headers: { 'AccessKey': BUNNY_API_KEY, 'Content-Type': 'application/octet-stream' },
+      body: buffer
+    });
+    if (putRes.ok) {
+      await bunnyDelete(srcRelPath);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error("[BunnyStorage] Error moviendo elemento en Bunny:", e.message);
     return false;
   }
 }
@@ -392,6 +441,20 @@ function loadLocalData() {
   } catch (e) {
     console.error("Error cargando protecciones locales:", e.message);
   }
+  try {
+    if (fs.existsSync(TRASH_FILE)) {
+      const trashArr = JSON.parse(fs.readFileSync(TRASH_FILE, 'utf8'));
+      if (Array.isArray(trashArr)) {
+        trashArr.forEach(item => {
+          if (item && item.id) {
+            trashItemsMap.set(item.id, item);
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.error("Error cargando papelera local:", e.message);
+  }
 }
 
 function saveData() {
@@ -403,6 +466,8 @@ function saveData() {
       password_hash: typeof v === 'object' ? v.hash : v
     }));
     fs.writeFileSync(PROTECTED_FILE, JSON.stringify(protectedArr, null, 2), 'utf8');
+    const trashArr = Array.from(trashItemsMap.values());
+    fs.writeFileSync(TRASH_FILE, JSON.stringify(trashArr, null, 2), 'utf8');
   } catch (e) {
     console.error("Error guardando datos locales:", e.message);
   }
@@ -473,6 +538,15 @@ async function syncWithSupabase() {
       dbLogs.forEach(l => adminLogs.push(l));
     }
   } catch (e) {}
+
+  try {
+    const { data: dbTrash } = await supabase.from('trash_items').select('*');
+    if (dbTrash && Array.isArray(dbTrash)) {
+      dbTrash.forEach(t => {
+        if (t && t.id) trashItemsMap.set(t.id, t);
+      });
+    }
+  } catch (e) {}
 }
 
 async function saveUserToSupabase(user) {
@@ -540,6 +614,18 @@ async function saveShareToSupabase(shareObj) {
   if (!supabase) return;
   try {
     await supabase.from('shares').upsert(shareObj, { onConflict: 'token' });
+  } catch (e) {}
+}
+
+async function saveTrashItemToSupabase(item, isDelete = false) {
+  if (!supabase) return;
+  try {
+    if (isDelete) {
+      const id = typeof item === 'string' ? item : item.id;
+      await supabase.from('trash_items').delete().eq('id', id);
+    } else {
+      await supabase.from('trash_items').upsert(item, { onConflict: 'id' });
+    }
   } catch (e) {}
 }
 
@@ -1494,6 +1580,10 @@ app.delete('/delete', requirePermission('can_delete'), async (req, res) => {
   const itemPath = req.query.path || '';
   const fullPath = safePath(itemPath);
 
+  if (!itemPath) {
+    return res.status(400).json({ detail: "Ruta de elemento requerida" });
+  }
+
   // Verificar si el elemento o alguna subcarpeta/archivo dentro está protegido
   let protectedKey = null;
   for (const key of protectedItemsMap.keys()) {
@@ -1509,25 +1599,146 @@ app.delete('/delete', requirePermission('can_delete'), async (req, res) => {
     });
   }
 
+  const trashId = `${Date.now()}_${path.basename(itemPath).replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+  const fullTrashPath = path.join(TRASH_DIR, trashId);
+
+  let isDir = false;
   if (fs.existsSync(fullPath)) {
-    fs.rmSync(fullPath, { recursive: true, force: true });
+    try {
+      isDir = fs.statSync(fullPath).isDirectory();
+      fs.renameSync(fullPath, fullTrashPath);
+    } catch {
+      try {
+        copyFolderRecursive(fullPath, fullTrashPath);
+        fs.rmSync(fullPath, { recursive: true, force: true });
+      } catch (e) {
+        console.error("Error moviendo a papelera local:", e.message);
+      }
+    }
   }
 
   if (isBunnyEnabled()) {
-    await bunnyDelete(itemPath);
+    await bunnyMoveItem(itemPath, `.papelera/${trashId}`);
   }
 
-  for (const key of protectedItemsMap.keys()) {
+  const trashRecord = {
+    id: trashId,
+    name: path.basename(itemPath),
+    original_path: itemPath,
+    is_dir: isDir,
+    deleted_at: Math.floor(Date.now() / 1000),
+    deleted_by: req.user ? req.user.username : 'desconocido'
+  };
+
+  trashItemsMap.set(trashId, trashRecord);
+
+  for (const key of Array.from(protectedItemsMap.keys())) {
     if (key === itemPath || key.startsWith(itemPath + '/')) {
       protectedItemsMap.delete(key);
       saveProtectedItemToSupabase(key, null);
     }
   }
   saveData();
+  saveTrashItemToSupabase(trashRecord);
 
-  logActivity(req.user.username, "ITEM_DELETED", `Eliminó '${itemPath}'`, req.ip || '');
+  logActivity(req.user ? req.user.username : 'Sistema', "ITEM_TRASHED", `Movió '${itemPath}' a la papelera`, req.ip || '');
 
-  return res.json({ status: "deleted" });
+  return res.json({ status: "trashed" });
+});
+
+// ============================================================
+// API DE PAPELERA DE RECICLAJE
+// ============================================================
+app.get('/api/trash', requireUser, (req, res) => {
+  const list = Array.from(trashItemsMap.values());
+  list.sort((a, b) => (b.deleted_at || 0) - (a.deleted_at || 0));
+  return res.json(list);
+});
+
+app.post('/api/trash/restore', requirePermission('can_delete'), parseRequestBody, async (req, res) => {
+  const trashId = req.body.id || req.body.trash_id || '';
+  const item = trashItemsMap.get(trashId);
+  if (!item) {
+    return res.status(404).json({ detail: "Elemento no encontrado en la papelera" });
+  }
+
+  const fullTrashPath = path.join(TRASH_DIR, trashId);
+  const fullTargetPath = safePath(item.original_path);
+
+  if (fs.existsSync(fullTrashPath)) {
+    const parentDir = path.dirname(fullTargetPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+    try {
+      fs.renameSync(fullTrashPath, fullTargetPath);
+    } catch {
+      try {
+        copyFolderRecursive(fullTrashPath, fullTargetPath);
+        fs.rmSync(fullTrashPath, { recursive: true, force: true });
+      } catch (e) {
+        console.error("Error restaurando desde papelera:", e.message);
+      }
+    }
+  }
+
+  if (isBunnyEnabled()) {
+    await bunnyMoveItem(`.papelera/${trashId}`, item.original_path);
+  }
+
+  trashItemsMap.delete(trashId);
+  saveData();
+  saveTrashItemToSupabase(trashId, true);
+
+  logActivity(req.user ? req.user.username : 'Sistema', "ITEM_RESTORED", `Restauró '${item.original_path}' desde la papelera`, req.ip || '');
+  return res.json({ status: "restored" });
+});
+
+app.all('/api/trash/delete-permanent', requirePermission('can_delete'), parseRequestBody, async (req, res) => {
+  const trashId = req.query.id || req.body.id || req.body.trash_id || '';
+  const item = trashItemsMap.get(trashId);
+
+  const fullTrashPath = path.join(TRASH_DIR, trashId);
+  if (fs.existsSync(fullTrashPath)) {
+    try { fs.rmSync(fullTrashPath, { recursive: true, force: true }); } catch {}
+  }
+
+  if (isBunnyEnabled() && trashId) {
+    await bunnyDelete(`.papelera/${trashId}`);
+  }
+
+  if (trashId) {
+    trashItemsMap.delete(trashId);
+    saveData();
+    saveTrashItemToSupabase(trashId, true);
+  }
+
+  logActivity(req.user ? req.user.username : 'Sistema', "ITEM_PERMANENTLY_DELETED", `Eliminó definitivamente '${item ? item.name : trashId}' de la papelera`, req.ip || '');
+  return res.json({ status: "deleted_permanently" });
+});
+
+app.all('/api/trash/empty', requirePermission('can_delete'), async (req, res) => {
+  for (const [trashId] of trashItemsMap.entries()) {
+    const fullTrashPath = path.join(TRASH_DIR, trashId);
+    if (fs.existsSync(fullTrashPath)) {
+      try { fs.rmSync(fullTrashPath, { recursive: true, force: true }); } catch {}
+    }
+    if (isBunnyEnabled()) {
+      await bunnyDelete(`.papelera/${trashId}`);
+    }
+    saveTrashItemToSupabase(trashId, true);
+  }
+
+  trashItemsMap.clear();
+
+  if (fs.existsSync(TRASH_DIR)) {
+    try { fs.rmSync(TRASH_DIR, { recursive: true, force: true }); } catch {}
+    try { fs.mkdirSync(TRASH_DIR, { recursive: true }); } catch {}
+  }
+
+  saveData();
+  logActivity(req.user ? req.user.username : 'Sistema', "TRASH_EMPTIED", `Vacío la papelera`, req.ip || '');
+  return res.json({ status: "emptied" });
 });
 
 // ============================================================
