@@ -851,6 +851,66 @@ app.get('/files', requirePermission('can_view'), async (req, res) => {
   return res.json(items);
 });
 
+async function recursiveListFiles(relPath = '') {
+  let items = null;
+  if (isBunnyEnabled()) {
+    items = await bunnyListFiles(relPath);
+  }
+  if (!items) {
+    const targetDir = safePath(relPath);
+    if (fs.existsSync(targetDir)) {
+      try {
+        const entries = fs.readdirSync(targetDir, { withFileTypes: true });
+        items = [];
+        for (const entry of entries) {
+          if (entry.name.startsWith('.')) continue;
+          const itemRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+          const fullPath = path.join(targetDir, entry.name);
+          const isDir = entry.isDirectory();
+          let stats = { size: 0, mtimeMs: Date.now() };
+          try { stats = fs.statSync(fullPath); } catch {}
+          items.push({
+            name: entry.name,
+            is_dir: isDir,
+            is_protected: protectedItemsMap.has(itemRelPath),
+            size: isDir ? 0 : stats.size,
+            modified: Math.floor(stats.mtimeMs / 1000)
+          });
+        }
+      } catch {}
+    }
+  }
+  return items || [];
+}
+
+app.get('/search', requirePermission('can_view'), async (req, res) => {
+  const query = (req.query.q || '').trim().toLowerCase();
+  if (!query) return res.json([]);
+
+  async function searchInDir(relPath = '') {
+    let matched = [];
+    const items = await recursiveListFiles(relPath);
+    for (const item of items) {
+      const itemRelPath = relPath ? `${relPath}/${item.name}` : item.name;
+      if (item.name.toLowerCase().includes(query)) {
+        matched.push({ ...item, path: itemRelPath });
+      }
+      if (item.is_dir) {
+        const subMatches = await searchInDir(itemRelPath);
+        matched = matched.concat(subMatches);
+      }
+    }
+    return matched;
+  }
+
+  try {
+    const results = await searchInDir('');
+    return res.json(results);
+  } catch (e) {
+    return res.json([]);
+  }
+});
+
 app.post('/rename', requirePermission('can_rename'), parseRequestBody, async (req, res) => {
   const oldPath = req.body.old_path || '';
   const newName = req.body.new_name || '';
