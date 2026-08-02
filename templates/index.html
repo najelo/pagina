@@ -165,6 +165,7 @@
             <div style="display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
                 <button class="modal-btn primary" id="tab-users-btn" onclick="switchAdminTab('users')">Usuarios</button>
                 <button class="modal-btn" id="tab-logs-btn" onclick="switchAdminTab('logs')">Registro de Actividad</button>
+                <button class="modal-btn" id="tab-protected-btn" onclick="switchAdminTab('protected')">Elementos Protegidos</button>
             </div>
 
             <!-- Vista de Usuarios -->
@@ -208,6 +209,42 @@
                         <tbody id="logs-tbody"></tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- Vista de Elementos Protegidos (Oculta por defecto) -->
+            <div id="admin-protected-section" style="display: none; flex-direction: column; gap: 12px;">
+                <div style="max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead style="position: sticky; top: 0; background: var(--bg-hover); z-index: 1;">
+                            <tr style="border-bottom: 1px solid var(--border); text-align: left; color: var(--text-secondary);">
+                                <th style="padding: 10px;">Elemento Protegido</th>
+                                <th style="padding: 10px;">Contraseña</th>
+                                <th style="padding: 10px; text-align: right;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="protected-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Cambiar Contraseña de Elemento Protegido (Admin) -->
+    <div id="change-protected-pass-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 420px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-key-2-line"></i> Cambiar Clave de Protección</h3>
+                <button class="modal-close-btn" onclick="closeModal('change-protected-pass-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 10px;">
+                <label style="font-size: 12px; color: var(--text-secondary);">
+                    Elemento: <strong id="change-pass-item-name" style="color: var(--text-main); word-break: break-all;"></strong>
+                </label>
+                <input type="password" id="change-protected-pass-input" class="modal-input" placeholder="Nueva contraseña (mín. 3 caracteres)" style="width: 100%; box-sizing: border-box;">
+            </div>
+            <div class="modal-actions" style="margin-top: 20px;">
+                <button class="modal-btn" onclick="closeModal('change-protected-pass-modal')">Cancelar</button>
+                <button class="modal-btn primary" onclick="submitAdminChangeProtectedPassword()">Guardar Clave</button>
             </div>
         </div>
     </div>
