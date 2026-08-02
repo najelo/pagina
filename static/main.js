@@ -469,11 +469,16 @@ function renderBreadcrumbs(path) {
 // ============================================================
 // BÚSQUEDA Y ORDENAMIENTO
 // ============================================================
-function filterFiles() {
+function filterFiles(e) {
     const searchInput = document.getElementById('search-input');
     if (!searchInput) return;
 
-    // Si el navegador autocompletó el campo sin que el usuario tenga el foco en el buscador, ignorarlo y limpiarlo
+    // Si el evento no fue desencadenado por una interacción directa del usuario o la entrada no tiene el foco
+    if (e && !e.isTrusted && document.activeElement !== searchInput) {
+        searchInput.value = "";
+        return;
+    }
+
     if (document.activeElement !== searchInput && searchInput.value) {
         searchInput.value = "";
         if (isSearchMode) {
