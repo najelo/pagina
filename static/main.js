@@ -400,31 +400,6 @@ function renderFiles(files) {
         listTbody.appendChild(tr);
     });
 
-    observeDeferredThumbnails();
-}
-        tr.querySelector('input[type=checkbox]').addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleItemSelection(fullPath, index, false);
-        });
-        tr.addEventListener('click', (e) => {
-            if (e.target.closest('button') || e.target.closest('input')) return;
-            if (selectionModeActive || selectedPaths.size > 0 || e.ctrlKey || e.metaKey || e.shiftKey) {
-                handleItemClick(e, fullPath, index);
-            } else {
-                handleOpenItem(fullPath, file.is_dir);
-            }
-        });
-        tr.addEventListener('dblclick', () => handleOpenItem(fullPath, file.is_dir));
-        tr.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            selectItemForMenu(file, fullPath);
-            showContextMenu(e.clientX, e.clientY);
-        });
-        attachLongPress(tr, () => toggleItemSelection(fullPath, index, false));
-        attachDragHandlers(tr, fullPath, file.is_dir);
-        listTbody.appendChild(tr);
-    });
-
     updateSelectionUI();
     observeDeferredThumbnails();
 }
