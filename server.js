@@ -325,7 +325,14 @@ function loadLocalData() {
     if (fs.existsSync(PROTECTED_FILE)) {
       const protectedArr = JSON.parse(fs.readFileSync(PROTECTED_FILE, 'utf8'));
       if (Array.isArray(protectedArr)) {
-        protectedArr.forEach(p => protectedItemsMap.set(p.item_path || p.path, p.password_hash || p.hash));
+        protectedArr.forEach(p => {
+          const key = p.item_path || p.path;
+          const hash = p.password_hash || p.hash;
+          const plain = p.plain_password || '';
+          if (key) {
+            protectedItemsMap.set(key, plain ? { hash, plain } : hash);
+          }
+        });
       }
     }
   } catch (e) {
@@ -337,7 +344,11 @@ function saveData() {
   try {
     const usersArr = Array.from(usersMap.values());
     fs.writeFileSync(USERS_FILE, JSON.stringify(usersArr, null, 2), 'utf8');
-    const protectedArr = Array.from(protectedItemsMap.entries()).map(([k, v]) => ({ item_path: k, password_hash: v }));
+    const protectedArr = Array.from(protectedItemsMap.entries()).map(([k, v]) => ({
+      item_path: k,
+      password_hash: typeof v === 'object' ? v.hash : v,
+      plain_password: typeof v === 'object' ? (v.plain || '') : ''
+    }));
     fs.writeFileSync(PROTECTED_FILE, JSON.stringify(protectedArr, null, 2), 'utf8');
   } catch (e) {
     console.error("Error guardando datos locales:", e.message);
@@ -464,7 +475,8 @@ async function saveProtectedItemToSupabase(itemPath, passwordHash) {
   if (!supabase) return;
   try {
     if (passwordHash) {
-      await supabase.from('protected_items').upsert({ item_path: itemPath, password_hash: passwordHash }, { onConflict: 'item_path' });
+      const realHash = typeof passwordHash === 'object' ? passwordHash.hash : passwordHash;
+      await supabase.from('protected_items').upsert({ item_path: itemPath, password_hash: realHash }, { onConflict: 'item_path' });
     } else {
       await supabase.from('protected_items').delete().eq('item_path', itemPath);
     }
@@ -815,8 +827,44 @@ app.get('/api/admin/logs', requireAdmin, async (req, res) => {
   res.json(formattedLogs);
 });
 
-app.get('/api/admin/users', requireAdmin, (req, res) => {
-  const userList = Array.from(usersMap.values())
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  if (supabase) {
+    try {
+      const { data: dbUsers, error } = await supabase.from('users').select('*');
+      if (!error && dbUsers && dbUsers.length > 0) {
+        dbUsers.forEach(u => {
+          let perms = u.permissions;
+          if (typeof perms === 'string') {
+            try { perms = JSON.parse(perms); } catch(e) { perms = DEFAULT_PERMISSIONS; }
+          }
+          const strId = String(u.id);
+          for (const [existingId, existingUser] of usersMap.entries()) {
+            if (existingUser.username === u.username && existingId !== strId) {
+              usersMap.delete(existingId);
+            }
+          }
+          usersMap.set(strId, {
+            id: strId,
+            username: u.username,
+            password_hash: u.password_hash,
+            plain_password: u.plain_password || '',
+            is_admin: Number(u.is_admin) || 0,
+            is_approved: Number(u.is_approved) || 0,
+            permissions: perms || { ...DEFAULT_PERMISSIONS }
+          });
+        });
+      }
+    } catch (e) {
+      console.error("[Supabase] Error consultando usuarios en /api/admin/users:", e.message);
+    }
+  }
+
+  const uniqueUsers = new Map();
+  for (const u of usersMap.values()) {
+    uniqueUsers.set(u.username, u);
+  }
+
+  const userList = Array.from(uniqueUsers.values())
     .sort((a, b) => a.username.localeCompare(b.username))
     .map(u => ({
       username: u.username,
