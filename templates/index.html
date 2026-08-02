@@ -383,10 +383,46 @@
                 <h3><i class="ri-lock-line"></i> Proteger con clave</h3>
                 <button class="modal-close-btn" onclick="closeModal('protect-modal')"><i class="ri-close-line"></i></button>
             </div>
-            <input type="password" id="protect-password-input" class="modal-input" placeholder="Contraseña (mín. 3 caracteres)">
+            <input type="password" id="protect-password-input" class="modal-input" placeholder="Contraseña (mín. 3 caracteres)" onkeydown="if(event.key==='Enter') submitProtect()">
             <div class="modal-actions">
                 <button class="modal-btn" onclick="closeModal('protect-modal')">Cancelar</button>
                 <button class="modal-btn primary" onclick="submitProtect()">Proteger</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Quitar Protección con contraseña -->
+    <div id="unprotect-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 380px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-lock-unlock-line"></i> Quitar protección</h3>
+                <button class="modal-close-btn" onclick="closeModal('unprotect-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px; margin-bottom: 12px;">
+                Ingresa la contraseña actual del elemento para quitar la protección:
+            </p>
+            <input type="password" id="unprotect-password-input" class="modal-input" placeholder="Contraseña actual" onkeydown="if(event.key==='Enter') submitUnprotect()">
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="closeModal('unprotect-modal')">Cancelar</button>
+                <button class="modal-btn primary" onclick="submitUnprotect()">Quitar protección</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Acceder a Elemento Protegido -->
+    <div id="enter-protected-modal" class="modal-overlay">
+        <div class="modal-box" style="width: 380px;">
+            <div class="modal-title-row">
+                <h3><i class="ri-lock-2-line"></i> Elemento protegido</h3>
+                <button class="modal-close-btn" onclick="closeModal('enter-protected-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px; margin-bottom: 12px;">
+                Ingresa la contraseña para acceder a <strong id="enter-protected-item-name" style="color: var(--text-main); word-break: break-all;"></strong>:
+            </p>
+            <input type="password" id="enter-protected-password-input" class="modal-input" placeholder="Contraseña de acceso" onkeydown="if(event.key==='Enter') submitEnterProtected()">
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="closeModal('enter-protected-modal')">Cancelar</button>
+                <button class="modal-btn primary" onclick="submitEnterProtected()">Acceder</button>
             </div>
         </div>
     </div>
