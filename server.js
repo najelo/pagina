@@ -328,9 +328,8 @@ function loadLocalData() {
         protectedArr.forEach(p => {
           const key = p.item_path || p.path;
           const hash = p.password_hash || p.hash;
-          const plain = p.plain_password || '';
-          if (key) {
-            protectedItemsMap.set(key, plain ? { hash, plain } : hash);
+          if (key && hash) {
+            protectedItemsMap.set(key, hash);
           }
         });
       }
@@ -346,8 +345,7 @@ function saveData() {
     fs.writeFileSync(USERS_FILE, JSON.stringify(usersArr, null, 2), 'utf8');
     const protectedArr = Array.from(protectedItemsMap.entries()).map(([k, v]) => ({
       item_path: k,
-      password_hash: typeof v === 'object' ? v.hash : v,
-      plain_password: typeof v === 'object' ? (v.plain || '') : ''
+      password_hash: typeof v === 'object' ? v.hash : v
     }));
     fs.writeFileSync(PROTECTED_FILE, JSON.stringify(protectedArr, null, 2), 'utf8');
   } catch (e) {
