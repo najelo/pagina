@@ -1678,8 +1678,143 @@ function togglePasswordVisibility(id) {
 }
 
 let currentAdminUsersList = [];
+let allAdminLogsCache = [];
+
+function switchAdminTab(tabName) {
+    const usersSec = document.getElementById('admin-users-section');
+    const logsSec = document.getElementById('admin-logs-section');
+    const btnUsers = document.getElementById('tab-users-btn');
+    const btnLogs = document.getElementById('tab-logs-btn');
+
+    if (tabName === 'users') {
+        if (usersSec) usersSec.style.display = 'block';
+        if (logsSec) logsSec.style.display = 'none';
+        if (btnUsers) btnUsers.className = 'modal-btn primary';
+        if (btnLogs) btnLogs.className = 'modal-btn';
+    } else {
+        if (usersSec) usersSec.style.display = 'none';
+        if (logsSec) logsSec.style.display = 'flex';
+        if (btnUsers) btnUsers.className = 'modal-btn';
+        if (btnLogs) btnLogs.className = 'modal-btn primary';
+        loadAdminLogs();
+    }
+}
+
+async function loadAdminLogs() {
+    const tbody = document.getElementById('logs-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 20px; color: var(--text-secondary);">Cargando registro de actividad...</td></tr>`;
+
+    try {
+        const res = await fetch('/api/admin/logs');
+        if (!res.ok) throw new Error();
+        allAdminLogsCache = await res.json();
+
+        // Poblar el selector de usuarios con usuarios únicos
+        const selectEl = document.getElementById('log-user-select');
+        if (selectEl) {
+            const currentSelected = selectEl.value;
+            const uniqueUsers = new Set();
+            allAdminLogsCache.forEach(l => {
+                const u = l.admin_username || l.username;
+                if (u && u !== 'Sistema') uniqueUsers.add(u);
+            });
+            if (currentAdminUsersList && currentAdminUsersList.length > 0) {
+                currentAdminUsersList.forEach(u => uniqueUsers.add(u.username));
+            }
+
+            let selectHtml = `<option value="">Todos los usuarios (${allAdminLogsCache.length})</option>`;
+            Array.from(uniqueUsers).sort().forEach(u => {
+                selectHtml += `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`;
+            });
+            selectEl.innerHTML = selectHtml;
+            selectEl.value = currentSelected;
+        }
+
+        filterAdminLogs();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 20px; color: var(--danger);">Error al cargar los registros.</td></tr>`;
+    }
+}
+
+function filterAdminLogs() {
+    const tbody = document.getElementById('logs-tbody');
+    if (!tbody) return;
+
+    const selectEl = document.getElementById('log-user-select');
+    const searchEl = document.getElementById('log-search-input');
+
+    const selectedUser = selectEl ? selectEl.value.trim().toLowerCase() : '';
+    const searchQuery = searchEl ? searchEl.value.trim().toLowerCase() : '';
+
+    const filtered = allAdminLogsCache.filter(l => {
+        const username = (l.admin_username || l.username || 'Sistema').toLowerCase();
+        const action = (l.action || '').toLowerCase();
+        const details = (l.details || l.target_user || '').toLowerCase();
+        const ip = (l.ip_address || '').toLowerCase();
+
+        if (selectedUser && username !== selectedUser) {
+            return false;
+        }
+
+        if (searchQuery) {
+            const matchesSearch = username.includes(searchQuery) ||
+                                  action.includes(searchQuery) ||
+                                  details.includes(searchQuery) ||
+                                  ip.includes(searchQuery);
+            if (!matchesSearch) return false;
+        }
+
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 20px; color: var(--text-secondary);">No se encontraron registros que coincidan con los filtros.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(l => {
+        const u = l.admin_username || l.username || 'Sistema';
+        const action = l.action || 'ACCION';
+        const details = l.details || l.target_user || '-';
+        const dateStr = formatDate(l.timestamp);
+
+        let badgeColor = 'var(--primary)';
+        let badgeBg = 'rgba(66,133,244,0.12)';
+        if (action.includes('DELETED') || action.includes('ERROR')) {
+            badgeColor = 'var(--danger)';
+            badgeBg = 'rgba(234,67,53,0.12)';
+        } else if (action.includes('UPLOADED') || action.includes('CREATED') || action.includes('SUCCESS') || action.includes('APPROVED')) {
+            badgeColor = 'var(--success)';
+            badgeBg = 'rgba(52,168,83,0.12)';
+        } else if (action.includes('PROTECTED') || action.includes('EDITED')) {
+            badgeColor = 'var(--warning)';
+            badgeBg = 'rgba(251,188,5,0.15)';
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px; font-weight: 600; color: var(--text-main); white-space: nowrap;">
+                    <i class="ri-user-3-line" style="color: var(--primary); margin-right: 4px;"></i>${escapeHtml(u)}
+                </td>
+                <td style="padding: 10px; white-space: nowrap;">
+                    <span style="font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: ${badgeBg}; color: ${badgeColor};">
+                        ${escapeHtml(action)}
+                    </span>
+                </td>
+                <td style="padding: 10px; color: var(--text-secondary); word-break: break-word;">
+                    ${escapeHtml(details)}
+                </td>
+                <td style="padding: 10px; color: var(--text-secondary); white-space: nowrap; font-size: 12px;">
+                    ${dateStr}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
 
 async function openAdminModal() {
+    switchAdminTab('users');
     const tbody = document.getElementById('users-tbody');
     if (!tbody) return;
     tbody.innerHTML = "<tr><td colspan='5' style='text-align:center; padding: 20px;'>Cargando usuarios...</td></tr>";
