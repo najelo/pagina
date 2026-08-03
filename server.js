@@ -9,6 +9,22 @@ const os = require('os');
 require('dotenv').config();
 
 function safeEnsureDir(targetDir, fallbackSubdir) {
+  // En Vercel, forzamos el uso de /tmp directamente para evitar errores de permisos en rutas raíz
+  const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  
+  if (isVercel) {
+    const fallbackPath = path.join(os.tmpdir(), fallbackSubdir);
+    try {
+      if (!fs.existsSync(fallbackPath)) {
+        fs.mkdirSync(fallbackPath, { recursive: true });
+      }
+      return fallbackPath;
+    } catch (err2) {
+      console.error(`[FileSystem Vercel] Error al crear directorio en /tmp ('${fallbackPath}'):`, err2.message);
+      return fallbackPath;
+    }
+  }
+
   try {
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
