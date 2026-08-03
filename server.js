@@ -1906,6 +1906,10 @@ app.get('/s/:token', async (req, res) => {
 });
 
 // Start Express Server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Najelo Cloud running on http://0.0.0.0:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Najelo Cloud running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+module.exports = app;
