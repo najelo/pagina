@@ -48,10 +48,64 @@ function safeEnsureDir(targetDir, fallbackSubdir) {
   }
 }
 
+const app = express();const express = require('express');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const multer = require('multer');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+require('dotenv').config();
+
+function safeEnsureDir(targetDir, fallbackSubdir) {
+  // En Vercel o entornos serverless, forzamos el uso de /tmp directamente
+  const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  
+  if (isVercel) {
+    const fallbackPath = path.join(os.tmpdir(), fallbackSubdir);
+    try {
+      if (!fs.existsSync(fallbackPath)) {
+        fs.mkdirSync(fallbackPath, { recursive: true });
+      }
+      return fallbackPath;
+    } catch (err2) {
+      console.error(`[FileSystem Vercel] Error al crear directorio en /tmp ('${fallbackPath}'):`, err2.message);
+      return fallbackPath;
+    }
+  }
+
+  try {
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const testFile = path.join(targetDir, `.write_test_${Date.now()}`);
+    fs.writeFileSync(testFile, 'test');
+    fs.unlinkSync(testFile);
+    return targetDir;
+  } catch (err) {
+    console.warn(`[FileSystem] El directorio '${targetDir}' no es escribible o no se pudo crear (${err.message}). Usando /tmp...`);
+    const fallbackPath = path.join(os.tmpdir(), fallbackSubdir);
+    try {
+      if (!fs.existsSync(fallbackPath)) {
+        fs.mkdirSync(fallbackPath, { recursive: true });
+      }
+      return fallbackPath;
+    } catch (err2) {
+      console.error(`[FileSystem] Error al crear el directorio alternativo '${fallbackPath}':`, err2.message);
+      return fallbackPath;
+    }
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Directorios protegidos contra restricciones de solo lectura en Vercel
+const DATA_DIR = safeEnsureDir(path.join(__dirname, 'data'), 'najelo_data');
 const UPLOAD_DIR = safeEnsureDir(path.join(__dirname, process.env.UPLOAD_DIR || 'uploads'), 'najelo_uploads');
 const tmpUploadDir = safeEnsureDir(path.join(__dirname, 'tmp_uploads'), 'najelo_tmp_uploads');
+
 const uploadMulter = multer({ dest: tmpUploadDir });
 
 const parseRequestBody = (req, res, next) => {
@@ -67,7 +121,7 @@ const parseRequestBody = (req, res, next) => {
 };
 
 // ============================================================
-// UTILIDADES DE CONTRASEÑA
+// UTILIDADES DE CONTRASEÑA Y RESTO DEL SERVIDOR
 // ============================================================
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
