@@ -168,10 +168,13 @@
             </div>
             
             <!-- Pestañas de navegación interna -->
-            <div style="display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
-                <button class="modal-btn primary" id="tab-users-btn" onclick="switchAdminTab('users')">Usuarios</button>
-                <button class="modal-btn" id="tab-logs-btn" onclick="switchAdminTab('logs')">Registro de Actividad</button>
-                <button class="modal-btn" id="tab-protected-btn" onclick="switchAdminTab('protected')">Elementos Protegidos</button>
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+                <div style="display: flex; gap: 10px;">
+                    <button class="modal-btn primary" id="tab-users-btn" onclick="switchAdminTab('users')">Usuarios</button>
+                    <button class="modal-btn" id="tab-logs-btn" onclick="switchAdminTab('logs')">Registro de Actividad</button>
+                    <button class="modal-btn" id="tab-protected-btn" onclick="switchAdminTab('protected')">Elementos Protegidos</button>
+                </div>
+                <button class="modal-btn" onclick="syncBunnyData()" title="Crear / Sincronizar carpeta 'data' en Bunny Storage"><i class="ri-cloud-line"></i> Sincronizar 'data' en Bunny</button>
             </div>
 
             <!-- Vista de Usuarios -->
