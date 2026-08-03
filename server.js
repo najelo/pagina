@@ -80,16 +80,24 @@ const TRASH_DIR = safeEnsureDir(path.join(UPLOAD_DIR, '.papelera'), 'najelo_pape
 
 function copyFolderRecursive(src, dest) {
   if (!fs.existsSync(src)) return;
-  const stats = fs.statSync(src);
-  if (stats.isDirectory()) {
-    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-    fs.readdirSync(src).forEach(childItemName => {
-      copyFolderRecursive(path.join(src, childItemName), path.join(dest, childItemName));
-    });
-  } else {
-    const parentDir = path.dirname(dest);
-    if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
-    fs.copyFileSync(src, dest);
+  try {
+    const stats = fs.statSync(src);
+    if (stats.isDirectory()) {
+      if (!fs.existsSync(dest)) {
+        try { fs.mkdirSync(dest, { recursive: true }); } catch {}
+      }
+      fs.readdirSync(src).forEach(childItemName => {
+        copyFolderRecursive(path.join(src, childItemName), path.join(dest, childItemName));
+      });
+    } else {
+      const parentDir = path.dirname(dest);
+      if (!fs.existsSync(parentDir)) {
+        try { fs.mkdirSync(parentDir, { recursive: true }); } catch {}
+      }
+      fs.copyFileSync(src, dest);
+    }
+  } catch (e) {
+    console.warn("copyFolderRecursive error:", e.message);
   }
 }
 
@@ -988,21 +996,6 @@ app.get('/api/logout', (req, res) => {
   res.clearCookie('najelo_uid');
   return res.json({ status: "ok" });
 });
-
-// Helper para copiar directorios de forma recursiva
-function copyFolderRecursive(src, dest) {
-  const exists = fs.existsSync(src);
-  const stats = exists && fs.statSync(src);
-  const isDirectory = exists && stats.isDirectory();
-  if (isDirectory) {
-    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-    fs.readdirSync(src).forEach((childItemName) => {
-      copyFolderRecursive(path.join(src, childItemName), path.join(dest, childItemName));
-    });
-  } else {
-    fs.copyFileSync(src, dest);
-  }
-}
 
 // ============================================================
 // API DE ADMINISTRACIÓN
