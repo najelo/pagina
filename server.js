@@ -178,7 +178,9 @@ async function bunnyListFiles(relPath = '') {
 
     return items.filter(item => {
       const itemName = item.ObjectName || item.Name || '';
-      return itemName && !itemName.startsWith('.');
+      if (!itemName || itemName.startsWith('.')) return false;
+      if (!relPath && (itemName === 'data' || itemName === 'tmp_uploads')) return false;
+      return true;
     }).map(item => {
       const itemName = item.ObjectName || item.Name || '';
       const itemRel = relPath ? `${relPath}/${itemName}` : itemName;
@@ -469,6 +471,57 @@ function loadLocalData() {
   }
 }
 
+async function ensureBunnyDataFolder() {
+  if (!isBunnyEnabled()) {
+    console.log("[BunnyStorage] Bunny.net no está habilitado. Omite creación de la carpeta 'data'.");
+    return false;
+  }
+  try {
+    console.log("[BunnyStorage] Asegurando la carpeta 'data' en Bunny Storage...");
+    const ok = await bunnyCreateFolder('', 'data');
+    if (ok) {
+      console.log("[BunnyStorage] Carpeta 'data' creada / verificada con éxito en Bunny Storage.");
+    }
+    if (fs.existsSync(USERS_FILE)) {
+      await bunnyUploadFile('data', 'users.json', USERS_FILE);
+    }
+    if (fs.existsSync(PROTECTED_FILE)) {
+      await bunnyUploadFile('data', 'protected.json', PROTECTED_FILE);
+    }
+    if (fs.existsSync(TRASH_FILE)) {
+      await bunnyUploadFile('data', 'trash.json', TRASH_FILE);
+    }
+    return true;
+  } catch (e) {
+    console.error("[BunnyStorage] Error asegurando carpeta 'data':", e.message);
+    return false;
+  }
+}
+
+async function syncDataFromBunny() {
+  if (!isBunnyEnabled()) return;
+  try {
+    const filesToSync = [
+      { name: 'users.json', localPath: USERS_FILE },
+      { name: 'protected.json', localPath: PROTECTED_FILE },
+      { name: 'trash.json', localPath: TRASH_FILE }
+    ];
+    for (const f of filesToSync) {
+      const url = getBunnyUrl(`data/${f.name}`);
+      const res = await fetch(url, { headers: { 'AccessKey': BUNNY_API_KEY } });
+      if (res.ok) {
+        const content = await res.text();
+        if (content && content.trim().length > 0) {
+          fs.writeFileSync(f.localPath, content, 'utf8');
+          console.log(`[BunnyStorage] Sincronizado 'data/${f.name}' desde Bunny Storage.`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[BunnyStorage] Error al descargar 'data' desde Bunny Storage:", e.message);
+  }
+}
+
 function saveData() {
   try {
     const usersArr = Array.from(usersMap.values());
@@ -480,6 +533,12 @@ function saveData() {
     fs.writeFileSync(PROTECTED_FILE, JSON.stringify(protectedArr, null, 2), 'utf8');
     const trashArr = Array.from(trashItemsMap.values());
     fs.writeFileSync(TRASH_FILE, JSON.stringify(trashArr, null, 2), 'utf8');
+
+    if (isBunnyEnabled()) {
+      bunnyUploadFile('data', 'users.json', USERS_FILE).catch(() => {});
+      bunnyUploadFile('data', 'protected.json', PROTECTED_FILE).catch(() => {});
+      bunnyUploadFile('data', 'trash.json', TRASH_FILE).catch(() => {});
+    }
   } catch (e) {
     console.error("Error guardando datos locales:", e.message);
   }
@@ -641,10 +700,20 @@ async function saveTrashItemToSupabase(item, isDelete = false) {
   } catch (e) {}
 }
 
-// Cargar estado inicial
-loadLocalData();
-syncWithSupabase();
-saveData();
+// Cargar estado inicial y sincronización de Bunny
+(async () => {
+  try {
+    await syncDataFromBunny();
+  } catch (e) {}
+  loadLocalData();
+  try {
+    await syncWithSupabase();
+  } catch (e) {}
+  saveData();
+  try {
+    await ensureBunnyDataFolder();
+  } catch (e) {}
+})();
 
 // ============================================================
 // MIDDLEWARE CONFIGURACIÓN
@@ -1232,6 +1301,7 @@ app.get('/files', requirePermission('can_view'), async (req, res) => {
         items = [];
         for (const entry of entries) {
           if (entry.name.startsWith('.')) continue;
+          if (!relPath && (entry.name === 'data' || entry.name === 'tmp_uploads')) continue;
           const itemRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
           const fullPath = path.join(targetDir, entry.name);
           const isDir = entry.isDirectory();
