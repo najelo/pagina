@@ -13,9 +13,12 @@ function safeEnsureDir(targetDir, fallbackSubdir) {
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
     }
+    const testFile = path.join(targetDir, `.write_test_${Date.now()}`);
+    fs.writeFileSync(testFile, 'test');
+    fs.unlinkSync(testFile);
     return targetDir;
   } catch (err) {
-    console.warn(`[FileSystem] No se pudo crear/acceder a '${targetDir}': ${err.message}. Usando alternativa en /tmp...`);
+    console.warn(`[FileSystem] El directorio '${targetDir}' no es escribible o no se pudo crear (${err.message}). Usando /tmp...`);
     const fallbackPath = path.join(os.tmpdir(), fallbackSubdir);
     try {
       if (!fs.existsSync(fallbackPath)) {
@@ -23,8 +26,8 @@ function safeEnsureDir(targetDir, fallbackSubdir) {
       }
       return fallbackPath;
     } catch (err2) {
-      console.error(`[FileSystem] Error al crear '${fallbackPath}':`, err2.message);
-      return targetDir;
+      console.error(`[FileSystem] Error al crear el directorio alternativo '${fallbackPath}':`, err2.message);
+      return fallbackPath;
     }
   }
 }
