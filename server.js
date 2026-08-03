@@ -268,19 +268,45 @@ async function bunnyDelete(relPath) {
   }
 }
 
-async function bunnyMoveItem(srcRelPath, destRelPath) {
+async function bunnyMoveItem(srcRelPath, destRelPath, localFilePath = null) {
   if (!isBunnyEnabled()) return false;
   try {
+    if (localFilePath && fs.existsSync(localFilePath) && fs.statSync(localFilePath).isFile()) {
+      const destDir = path.dirname(destRelPath) === '.' ? '' : path.dirname(destRelPath);
+      const fileName = path.basename(destRelPath);
+      const ok = await bunnyUploadFile(destDir, fileName, localFilePath);
+      if (ok) {
+        await bunnyDelete(srcRelPath);
+        return true;
+      }
+    }
+
     const srcUrl = getBunnyUrl(srcRelPath);
     const destUrl = getBunnyUrl(destRelPath);
     const res = await fetch(srcUrl, { headers: { 'AccessKey': BUNNY_API_KEY } });
     if (!res.ok) return false;
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const putRes = await fetch(destUrl, {
+
+    const headers = {
+      'AccessKey': BUNNY_API_KEY,
+      'Content-Type': 'application/octet-stream'
+    };
+    const contentLength = res.headers.get('content-length');
+    if (contentLength) {
+      headers['Content-Length'] = contentLength;
+    }
+
+    let fetchOptions = {
       method: 'PUT',
-      headers: { 'AccessKey': BUNNY_API_KEY, 'Content-Type': 'application/octet-stream' },
-      body: buffer
-    });
+      headers,
+      duplex: 'half'
+    };
+
+    if (res.body) {
+      fetchOptions.body = res.body;
+    }
+
+    const putRes = await fetch(destUrl, fetchOptions);
+
     if (putRes.ok) {
       await bunnyDelete(srcRelPath);
       return true;
@@ -1371,7 +1397,7 @@ app.post('/rename', requirePermission('can_rename'), parseRequestBody, async (re
   }
 
   if (isBunnyEnabled()) {
-    await bunnyMoveItem(cleanOld, newPath);
+    await bunnyMoveItem(cleanOld, newPath, fullNew);
   }
 
   for (const [key, pwdHash] of Array.from(protectedItemsMap.entries())) {
@@ -1411,7 +1437,7 @@ app.post('/move', requirePermission('can_move_copy'), parseRequestBody, async (r
   }
 
   if (isBunnyEnabled()) {
-    await bunnyMoveItem(itemPath, destSub);
+    await bunnyMoveItem(itemPath, destSub, fullDest);
   }
 
   for (const [key, pwdHash] of Array.from(protectedItemsMap.entries())) {
@@ -1618,7 +1644,7 @@ app.delete('/delete', requirePermission('can_delete'), async (req, res) => {
   }
 
   if (isBunnyEnabled()) {
-    await bunnyMoveItem(itemPath, `.papelera/${trashId}`);
+    await bunnyMoveItem(itemPath, `.papelera/${trashId}`, fullTrashPath);
   }
 
   const trashRecord = {
@@ -1683,7 +1709,7 @@ app.post('/api/trash/restore', requirePermission('can_delete'), parseRequestBody
   }
 
   if (isBunnyEnabled()) {
-    await bunnyMoveItem(`.papelera/${trashId}`, item.original_path);
+    await bunnyMoveItem(`.papelera/${trashId}`, item.original_path, fullTargetPath);
   }
 
   trashItemsMap.delete(trashId);
