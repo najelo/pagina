@@ -440,50 +440,58 @@ async function bunnyCopyItem(oldRelPath, newRelPath, localSourcePath = null) {
 
 // Carga y guardado local JSON
 function loadLocalData() {
+  const readJson = (fileName, primaryPath) => {
+    const pathsToTry = [primaryPath, path.join(__dirname, 'data', fileName)];
+    for (const p of pathsToTry) {
+      try {
+        if (fs.existsSync(p)) {
+          const content = fs.readFileSync(p, 'utf8');
+          if (content && content.trim()) return JSON.parse(content);
+        }
+      } catch (e) {}
+    }
+    return null;
+  };
+
   try {
-    if (fs.existsSync(USERS_FILE)) {
-      const usersArr = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-      if (Array.isArray(usersArr)) {
-        usersArr.forEach(u => {
-          // Limpiar entradas previas con el mismo username pero ID distinto
-          for (const [existingId, existingUser] of usersMap.entries()) {
-            if (existingUser.username === u.username && existingId !== u.id) {
-              usersMap.delete(existingId);
-            }
+    const usersArr = readJson('users.json', USERS_FILE);
+    if (Array.isArray(usersArr)) {
+      usersArr.forEach(u => {
+        for (const [existingId, existingUser] of usersMap.entries()) {
+          if (existingUser.username === u.username && existingId !== u.id) {
+            usersMap.delete(existingId);
           }
-          usersMap.set(u.id, u);
-        });
-      }
+        }
+        usersMap.set(u.id, u);
+      });
     }
   } catch (e) {
     console.error("Error cargando usuarios locales:", e.message);
   }
+
   try {
-    if (fs.existsSync(PROTECTED_FILE)) {
-      const protectedArr = JSON.parse(fs.readFileSync(PROTECTED_FILE, 'utf8'));
-      if (Array.isArray(protectedArr)) {
-        protectedArr.forEach(p => {
-          const key = p.item_path || p.path;
-          const hash = p.password_hash || p.hash;
-          if (key && hash) {
-            protectedItemsMap.set(key, hash);
-          }
-        });
-      }
+    const protectedArr = readJson('protected.json', PROTECTED_FILE);
+    if (Array.isArray(protectedArr)) {
+      protectedArr.forEach(p => {
+        const key = p.item_path || p.path;
+        const hash = p.password_hash || p.hash;
+        if (key && hash) {
+          protectedItemsMap.set(key, hash);
+        }
+      });
     }
   } catch (e) {
     console.error("Error cargando protecciones locales:", e.message);
   }
+
   try {
-    if (fs.existsSync(TRASH_FILE)) {
-      const trashArr = JSON.parse(fs.readFileSync(TRASH_FILE, 'utf8'));
-      if (Array.isArray(trashArr)) {
-        trashArr.forEach(item => {
-          if (item && item.id) {
-            trashItemsMap.set(item.id, item);
-          }
-        });
-      }
+    const trashArr = readJson('trash.json', TRASH_FILE);
+    if (Array.isArray(trashArr)) {
+      trashArr.forEach(item => {
+        if (item && item.id) {
+          trashItemsMap.set(item.id, item);
+        }
+      });
     }
   } catch (e) {
     console.error("Error cargando papelera local:", e.message);
@@ -501,15 +509,18 @@ async function ensureBunnyDataFolder() {
     if (ok) {
       console.log("[BunnyStorage] Carpeta 'data' creada / verificada con éxito en Bunny Storage.");
     }
-    if (fs.existsSync(USERS_FILE)) {
-      await bunnyUploadFile('data', 'users.json', USERS_FILE);
-    }
-    if (fs.existsSync(PROTECTED_FILE)) {
-      await bunnyUploadFile('data', 'protected.json', PROTECTED_FILE);
-    }
-    if (fs.existsSync(TRASH_FILE)) {
-      await bunnyUploadFile('data', 'trash.json', TRASH_FILE);
-    }
+    const uploadIfPresent = async (fileName, primaryPath) => {
+      const paths = [primaryPath, path.join(__dirname, 'data', fileName)];
+      for (const p of paths) {
+        if (fs.existsSync(p)) {
+          await bunnyUploadFile('data', fileName, p);
+          break;
+        }
+      }
+    };
+    await uploadIfPresent('users.json', USERS_FILE);
+    await uploadIfPresent('protected.json', PROTECTED_FILE);
+    await uploadIfPresent('trash.json', TRASH_FILE);
     return true;
   } catch (e) {
     console.error("[BunnyStorage] Error asegurando carpeta 'data':", e.message);
@@ -531,8 +542,12 @@ async function syncDataFromBunny() {
       if (res.ok) {
         const content = await res.text();
         if (content && content.trim().length > 0) {
-          fs.writeFileSync(f.localPath, content, 'utf8');
-          console.log(`[BunnyStorage] Sincronizado 'data/${f.name}' desde Bunny Storage.`);
+          try {
+            fs.writeFileSync(f.localPath, content, 'utf8');
+            console.log(`[BunnyStorage] Sincronizado 'data/${f.name}' desde Bunny Storage.`);
+          } catch (err) {
+            console.warn(`[BunnyStorage] No se pudo guardar localmente ${f.localPath}:`, err.message);
+          }
         }
       }
     }
@@ -544,14 +559,16 @@ async function syncDataFromBunny() {
 function saveData() {
   try {
     const usersArr = Array.from(usersMap.values());
-    fs.writeFileSync(USERS_FILE, JSON.stringify(usersArr, null, 2), 'utf8');
+    try { fs.writeFileSync(USERS_FILE, JSON.stringify(usersArr, null, 2), 'utf8'); } catch (e) {}
+
     const protectedArr = Array.from(protectedItemsMap.entries()).map(([k, v]) => ({
       item_path: k,
       password_hash: typeof v === 'object' ? v.hash : v
     }));
-    fs.writeFileSync(PROTECTED_FILE, JSON.stringify(protectedArr, null, 2), 'utf8');
+    try { fs.writeFileSync(PROTECTED_FILE, JSON.stringify(protectedArr, null, 2), 'utf8'); } catch (e) {}
+
     const trashArr = Array.from(trashItemsMap.values());
-    fs.writeFileSync(TRASH_FILE, JSON.stringify(trashArr, null, 2), 'utf8');
+    try { fs.writeFileSync(TRASH_FILE, JSON.stringify(trashArr, null, 2), 'utf8'); } catch (e) {}
 
     if (isBunnyEnabled()) {
       bunnyUploadFile('data', 'users.json', USERS_FILE).catch(() => {});
@@ -1502,8 +1519,10 @@ app.post('/move', requirePermission('can_move_copy'), parseRequestBody, async (r
 
   if (fs.existsSync(fullSource)) {
     const destParent = path.dirname(fullDest);
-    if (!fs.existsSync(destParent)) fs.mkdirSync(destParent, { recursive: true });
-    fs.renameSync(fullSource, fullDest);
+    if (!fs.existsSync(destParent)) {
+      try { fs.mkdirSync(destParent, { recursive: true }); } catch (e) {}
+    }
+    try { fs.renameSync(fullSource, fullDest); } catch (e) {}
   }
 
   if (isBunnyEnabled()) {
@@ -1542,7 +1561,9 @@ app.post('/copy', requirePermission('can_move_copy'), parseRequestBody, async (r
 
   if (fs.existsSync(fullSource)) {
     const destParent = path.dirname(fullDest);
-    if (!fs.existsSync(destParent)) fs.mkdirSync(destParent, { recursive: true });
+    if (!fs.existsSync(destParent)) {
+      try { fs.mkdirSync(destParent, { recursive: true }); } catch (e) {}
+    }
     copyFolderRecursive(fullSource, fullDest);
   }
 
@@ -1578,7 +1599,7 @@ app.post('/upload', requirePermission('can_upload'), uploadMulter.single('file')
   const destDir = safePath(subDir);
 
   if (!fs.existsSync(destDir)) {
-    fs.mkdirSync(destDir, { recursive: true });
+    try { fs.mkdirSync(destDir, { recursive: true }); } catch (e) {}
   }
 
   const destFile = path.join(destDir, filename);
@@ -1617,7 +1638,7 @@ app.post('/create-folder', requirePermission('can_create_folder'), parseRequestB
   const fullDir = safePath(targetRel);
 
   if (!fs.existsSync(fullDir)) {
-    fs.mkdirSync(fullDir, { recursive: true });
+    try { fs.mkdirSync(fullDir, { recursive: true }); } catch (e) {}
   }
 
   if (isBunnyEnabled()) {
@@ -1764,7 +1785,7 @@ app.post('/api/trash/restore', requirePermission('can_delete'), parseRequestBody
   if (fs.existsSync(fullTrashPath)) {
     const parentDir = path.dirname(fullTargetPath);
     if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
+      try { fs.mkdirSync(parentDir, { recursive: true }); } catch (e) {}
     }
     try {
       fs.renameSync(fullTrashPath, fullTargetPath);
