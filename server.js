@@ -360,73 +360,59 @@ async function pipeBunnyToResponse(relPath, req, res, attachmentFileName = null)
   }
 }
 
-async function bunnyDownloadBuffer(relPath) {
-  if (!isBunnyEnabled()) return null;
-  try {
-    const url = getBunnyUrl(relPath);
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { 'AccessKey': BUNNY_API_KEY }
-    });
-    if (!res.ok) return null;
-    const arrayBuf = await res.arrayBuffer();
-    return Buffer.from(arrayBuf);
-  } catch (e) {
-    console.error("[BunnyStorage] Error descargando archivo:", e.message);
-    return null;
-  }
-}
-
-async function bunnyCopyItem(oldRelPath, newRelPath) {
+async function bunnyCopyItem(oldRelPath, newRelPath, localSourcePath = null) {
   if (!isBunnyEnabled()) return false;
   try {
     const cleanOld = (oldRelPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     const cleanNew = (newRelPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     if (!cleanOld || !cleanNew || cleanOld === cleanNew) return false;
 
-    // Intentar como archivo descargando buffer
-    const buf = await bunnyDownloadBuffer(cleanOld);
-    if (buf !== null) {
+    if (localSourcePath && fs.existsSync(localSourcePath) && fs.statSync(localSourcePath).isFile()) {
       const newParts = cleanNew.split('/');
       const fileName = newParts.pop();
       const parentDir = newParts.join('/');
-      return await bunnyUploadFile(parentDir, fileName, buf);
+      return await bunnyUploadFile(parentDir, fileName, localSourcePath);
     }
 
-    // Si no es un archivo, intentar como directorio listando elementos
-    const items = await bunnyListFiles(cleanOld);
-    if (items !== null) {
-      const newParts = cleanNew.split('/');
-      const folderName = newParts.pop();
-      const parentDir = newParts.join('/');
-      await bunnyCreateFolder(parentDir, folderName);
+    const srcUrl = getBunnyUrl(cleanOld);
+    const destUrl = getBunnyUrl(cleanNew);
 
-      for (const item of items) {
-        const itemOld = `${cleanOld}/${item.name}`;
-        const itemNew = `${cleanNew}/${item.name}`;
-        await bunnyCopyItem(itemOld, itemNew);
+    const res = await fetch(srcUrl, { headers: { 'AccessKey': BUNNY_API_KEY } });
+    if (!res.ok) {
+      const items = await bunnyListFiles(cleanOld);
+      if (items !== null) {
+        const newParts = cleanNew.split('/');
+        const folderName = newParts.pop();
+        const parentDir = newParts.join('/');
+        await bunnyCreateFolder(parentDir, folderName);
+
+        for (const item of items) {
+          const itemOld = `${cleanOld}/${item.name}`;
+          const itemNew = `${cleanNew}/${item.name}`;
+          await bunnyCopyItem(itemOld, itemNew);
+        }
+        return true;
       }
-      return true;
+      return false;
     }
 
-    return false;
+    const headers = {
+      'AccessKey': BUNNY_API_KEY,
+      'Content-Type': 'application/octet-stream'
+    };
+    const contentLength = res.headers.get('content-length');
+    if (contentLength) headers['Content-Length'] = contentLength;
+
+    const putRes = await fetch(destUrl, {
+      method: 'PUT',
+      headers,
+      body: res.body,
+      duplex: 'half'
+    });
+
+    return putRes.ok;
   } catch (e) {
     console.error("[BunnyStorage] Error copiando en Bunny:", e.message);
-    return false;
-  }
-}
-
-async function bunnyMoveItem(oldRelPath, newRelPath) {
-  if (!isBunnyEnabled()) return false;
-  try {
-    const success = await bunnyCopyItem(oldRelPath, newRelPath);
-    if (success) {
-      await bunnyDelete(oldRelPath);
-      return true;
-    }
-    return false;
-  } catch (e) {
-    console.error("[BunnyStorage] Error moviendo/renombrando en Bunny:", e.message);
     return false;
   }
 }
@@ -785,13 +771,11 @@ function logActivity(username, action, details, ip_address = '') {
       created_at: now.toISOString()
     }]).then(({ error }) => {
       if (error) {
-        console.error("[Supabase] Error insertando en admin_logs:", error.message, error.details || '');
-      } else {
-        console.log(`[Supabase] Log registrado con éxito: ${action} - ${user}`);
+        if (!error.message || !error.message.includes('row-level security')) {
+          console.error("[Supabase] Error insertando en admin_logs:", error.message);
+        }
       }
-    }).catch(e => {
-      console.error("[Supabase] Excepción en logActivity:", e.message);
-    });
+    }).catch(() => {});
   }
 }
 
