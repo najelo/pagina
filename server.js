@@ -5,20 +5,34 @@ const multer = require('multer');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 require('dotenv').config();
+
+function safeEnsureDir(targetDir, fallbackSubdir) {
+  try {
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    return targetDir;
+  } catch (err) {
+    console.warn(`[FileSystem] No se pudo crear/acceder a '${targetDir}': ${err.message}. Usando alternativa en /tmp...`);
+    const fallbackPath = path.join(os.tmpdir(), fallbackSubdir);
+    try {
+      if (!fs.existsSync(fallbackPath)) {
+        fs.mkdirSync(fallbackPath, { recursive: true });
+      }
+      return fallbackPath;
+    } catch (err2) {
+      console.error(`[FileSystem] Error al crear '${fallbackPath}':`, err2.message);
+      return targetDir;
+    }
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const UPLOAD_DIR = path.join(__dirname, process.env.UPLOAD_DIR || 'uploads');
-
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
-const tmpUploadDir = path.join(__dirname, 'tmp_uploads');
-if (!fs.existsSync(tmpUploadDir)) {
-  fs.mkdirSync(tmpUploadDir, { recursive: true });
-}
+const UPLOAD_DIR = safeEnsureDir(path.join(__dirname, process.env.UPLOAD_DIR || 'uploads'), 'najelo_uploads');
+const tmpUploadDir = safeEnsureDir(path.join(__dirname, 'tmp_uploads'), 'najelo_tmp_uploads');
 const uploadMulter = multer({ dest: tmpUploadDir });
 
 const parseRequestBody = (req, res, next) => {
@@ -56,19 +70,13 @@ function verifyPassword(password, stored) {
 // ============================================================
 // ALMACENAMIENTO Y PERSISTENCIA DE DATOS
 // ============================================================
-const DATA_DIR = path.join(__dirname, 'data');
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+const DATA_DIR = safeEnsureDir(path.join(__dirname, 'data'), 'najelo_data');
 
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const PROTECTED_FILE = path.join(DATA_DIR, 'protected.json');
 const TRASH_FILE = path.join(DATA_DIR, 'trash.json');
 
-const TRASH_DIR = path.join(UPLOAD_DIR, '.papelera');
-if (!fs.existsSync(TRASH_DIR)) {
-  fs.mkdirSync(TRASH_DIR, { recursive: true });
-}
+const TRASH_DIR = safeEnsureDir(path.join(UPLOAD_DIR, '.papelera'), 'najelo_papelera');
 
 function copyFolderRecursive(src, dest) {
   if (!fs.existsSync(src)) return;
@@ -999,6 +1007,18 @@ function copyFolderRecursive(src, dest) {
 // ============================================================
 // API DE ADMINISTRACIÓN
 // ============================================================
+app.post('/api/admin/bunny-ensure-data', requireAdmin, async (req, res) => {
+  if (!isBunnyEnabled()) {
+    return res.status(400).json({ detail: "Bunny.net Storage no está configurado (faltan BUNNY_STORAGE_ZONE o BUNNY_API_KEY en las variables de entorno)." });
+  }
+  const ok = await ensureBunnyDataFolder();
+  if (ok) {
+    logActivity(req.user.username, "BUNNY_DATA_SYNC", "Creó y sincronizó la carpeta 'data' en Bunny Storage");
+    return res.json({ status: "ok", message: "Carpeta 'data' creada y datos sincronizados correctamente en Bunny Storage." });
+  } else {
+    return res.status(500).json({ detail: "Error al comunicarse con Bunny Storage para crear la carpeta 'data'." });
+  }
+});
 app.get('/api/admin/logs', requireAdmin, async (req, res) => {
   if (supabase) {
     try {
