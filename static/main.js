@@ -2271,3 +2271,17 @@ async function emptyTrash() {
         showToast("Error de conexión", "error");
     }
 }
+
+async function syncBunnyData() {
+    try {
+        const res = await fetch('/api/admin/bunny-ensure-data', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || "Carpeta 'data' creada y datos sincronizados en Bunny Storage", "success");
+        } else {
+            showToast(data.detail || "Error al sincronizar 'data' en Bunny", "warning");
+        }
+    } catch (e) {
+        showToast("Error de red al sincronizar con Bunny Storage", "danger");
+    }
+}
