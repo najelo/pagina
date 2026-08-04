@@ -9,56 +9,6 @@ const os = require('os');
 require('dotenv').config();
 
 function safeEnsureDir(targetDir, fallbackSubdir) {
-  // En Vercel, forzamos el uso de /tmp directamente para evitar errores de permisos en rutas raíz
-  const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-  
-  if (isVercel) {
-    const fallbackPath = path.join(os.tmpdir(), fallbackSubdir);
-    try {
-      if (!fs.existsSync(fallbackPath)) {
-        fs.mkdirSync(fallbackPath, { recursive: true });
-      }
-      return fallbackPath;
-    } catch (err2) {
-      console.error(`[FileSystem Vercel] Error al crear directorio en /tmp ('${fallbackPath}'):`, err2.message);
-      return fallbackPath;
-    }
-  }
-
-  try {
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
-    const testFile = path.join(targetDir, `.write_test_${Date.now()}`);
-    fs.writeFileSync(testFile, 'test');
-    fs.unlinkSync(testFile);
-    return targetDir;
-  } catch (err) {
-    console.warn(`[FileSystem] El directorio '${targetDir}' no es escribible o no se pudo crear (${err.message}). Usando /tmp...`);
-    const fallbackPath = path.join(os.tmpdir(), fallbackSubdir);
-    try {
-      if (!fs.existsSync(fallbackPath)) {
-        fs.mkdirSync(fallbackPath, { recursive: true });
-      }
-      return fallbackPath;
-    } catch (err2) {
-      console.error(`[FileSystem] Error al crear el directorio alternativo '${fallbackPath}':`, err2.message);
-      return fallbackPath;
-    }
-  }
-}
-
-const app = express();const express = require('express');
-const session = require('express-session');
-const cookieParser = require('cookie-parser');
-const multer = require('multer');
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-require('dotenv').config();
-
-function safeEnsureDir(targetDir, fallbackSubdir) {
   // En Vercel o entornos serverless, forzamos el uso de /tmp directamente
   const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
   
